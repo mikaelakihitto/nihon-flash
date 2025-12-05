@@ -1,8 +1,8 @@
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/nihon_flash"
+    DATABASE_URL: str = "sqlite:///./nihon_flash.db"
     JWT_SECRET: str = "changeme"
     JWT_ALGORITHM: str = "HS256"
 
