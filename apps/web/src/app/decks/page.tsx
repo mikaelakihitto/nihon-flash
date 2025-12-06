@@ -1,9 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { deckMeta } from "../../lib/mockData";
+import { useEffect, useState } from "react";
+import { apiFetch } from "../../lib/api";
+
+type Deck = {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string | null;
+  cover_image_url?: string | null;
+  instructions_md?: string | null;
+  note_types?: { template_count: number; field_count: number }[];
+  available?: boolean;
+};
+
+const placeholders: Deck[] = [
+  {
+    id: 10_001,
+    name: "Katakana - Básico",
+    slug: "katakana",
+    description: "46 caracteres para palavras estrangeiras e ênfase.",
+    cover_image_url: null,
+    available: false
+  },
+  {
+    id: 10_002,
+    name: "Vocabulário N5",
+    slug: "vocabulario-n5",
+    description: "Vocabulário essencial do JLPT N5.",
+    cover_image_url: null,
+    available: false
+  },
+  {
+    id: 10_003,
+    name: "Kanji N5",
+    slug: "kanji-n5",
+    description: "Primeiros kanji com leituras e significados.",
+    cover_image_url: null,
+    available: false
+  }
+];
 
 export default function DecksPage() {
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch<Deck[]>("/decks")
+      .then((data) => setDecks([...data.map((d) => ({ ...d, available: true })), ...placeholders]))
+      .catch((err) => setError(err?.message || "Erro ao carregar decks"))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -20,52 +71,38 @@ export default function DecksPage() {
           </Link>
         </div>
 
+        {loading && <div className="text-sm text-slate-600">Carregando decks...</div>}
+        {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+
         <div className="grid gap-4 md:grid-cols-2">
-          {deckMeta.map((deck) => {
-            const progress = Math.round((deck.completedCards / deck.totalCards) * 100);
-            const remaining = deck.totalCards - deck.completedCards;
-            return (
-              <div key={deck.id} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-900">{deck.name}</h3>
-                    <p className="text-sm text-slate-600">{deck.description}</p>
-                  </div>
-                  {deck.status === "soon" && (
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                      Em breve
-                    </span>
-                  )}
+          {decks.map((deck) => (
+            <div key={deck.id} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{deck.name}</h3>
+                  <p className="text-sm text-slate-600">{deck.description}</p>
                 </div>
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-sm text-slate-600">
-                    <span>Progresso</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div className="mt-2 h-2 rounded-full bg-slate-100">
-                    <div className="h-2 rounded-full bg-indigo-500" style={{ width: `${progress}%` }} />
-                  </div>
-                  <p className="mt-2 text-xs text-slate-500">
-                    {deck.status === "available"
-                      ? `Faltam ${remaining} cartões`
-                      : "Este deck estará disponível em breve."}
-                  </p>
-                </div>
-                {deck.status === "available" ? (
-                  <Link
-                    href={`/study/${deck.key}`}
-                    className="mt-4 inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700"
-                  >
-                    Estudar
-                  </Link>
-                ) : (
-                  <button className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 opacity-60">
-                    Em breve
-                  </button>
+                {deck.cover_image_url && (
+                  <img src={deck.cover_image_url} alt="" className="h-12 w-20 rounded object-cover" />
                 )}
               </div>
-            );
-          })}
+              <p className="mt-3 text-xs text-slate-500">
+                {deck.note_types?.length ?? 0} modelos de nota | slug: {deck.slug}
+              </p>
+              {deck.available ? (
+                <Link
+                  href={`/study/${deck.slug}`}
+                  className="mt-4 inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700"
+                >
+                  Estudar
+                </Link>
+              ) : (
+                <button className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 opacity-60">
+                  Em breve
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </main>

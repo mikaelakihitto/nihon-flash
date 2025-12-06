@@ -5,9 +5,50 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearToken, useAuthGuard } from "../../lib/auth";
 import { apiFetch } from "../../lib/api";
-import { deckMeta, mockStats } from "../../lib/mockData";
 
-type Deck = { id: number; name: string; description?: string | null };
+type Deck = {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string | null;
+  description_md?: string | null;
+  cover_image_url?: string | null;
+  instructions_md?: string | null;
+  is_public?: boolean;
+  tags?: string[];
+  note_types?: { template_count: number; field_count: number }[];
+  available?: boolean;
+};
+
+const placeholders: Deck[] = [
+  {
+    id: 10_001,
+    name: "Katakana - Básico",
+    slug: "katakana",
+    description: "46 caracteres para palavras estrangeiras e ênfase.",
+    cover_image_url: null,
+    note_types: [],
+    available: false
+  },
+  {
+    id: 10_002,
+    name: "Vocabulário N5",
+    slug: "vocabulario-n5",
+    description: "Vocabulário essencial do JLPT N5.",
+    cover_image_url: null,
+    note_types: [],
+    available: false
+  },
+  {
+    id: 10_003,
+    name: "Kanji N5",
+    slug: "kanji-n5",
+    description: "Primeiros kanji com leituras e significados.",
+    cover_image_url: null,
+    note_types: [],
+    available: false
+  }
+];
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -19,8 +60,7 @@ export default function DashboardPage() {
     if (!ready) return;
     apiFetch<Deck[]>("/decks")
       .then((data) => {
-        setDecks(data);
-        console.log("Decks carregados:", data);
+        setDecks(data.map((d) => ({ ...d, available: true })));
       })
       .catch((err) => setError(err?.message || "Erro ao carregar decks"));
   }, [ready]);
@@ -36,8 +76,8 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center gap-4">
           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
-            <p className="font-semibold">🔥 Streak: {mockStats.streak} dias</p>
-            <p className="text-xs text-slate-500">Cards para hoje: {mockStats.cardsForToday}</p>
+            <p className="font-semibold">🔥 Streak: --</p>
+            <p className="text-xs text-slate-500">Cards para hoje: --</p>
           </div>
           <Link
             href="/profile"
@@ -64,9 +104,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="space-y-2">
               <p className="text-sm uppercase tracking-[0.2em] text-indigo-600">Próxima ação</p>
-              <h2 className="text-3xl font-semibold text-slate-900">
-                Você tem {mockStats.cardsForToday} cards para revisar hoje
-              </h2>
+              <h2 className="text-3xl font-semibold text-slate-900">Você tem cards para revisar hoje</h2>
               <p className="text-slate-600">
                 Comece pela revisão para consolidar sua memória antes de ver novos símbolos.
               </p>
@@ -95,15 +133,15 @@ export default function DashboardPage() {
             {error && <span className="text-sm text-red-600">{error}</span>}
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            {deckMeta.map((deck) => (
+            {[...decks, ...placeholders].map((deck) => (
               <DeckCard
                 key={deck.id}
                 title={deck.name}
-                description={deck.description}
-                progress={Math.round((deck.completedCards / deck.totalCards) * 100)}
-                remaining={deck.totalCards - deck.completedCards}
-                href={deck.status === "available" ? `/study/${deck.key}` : undefined}
-                status={deck.status}
+                description={deck.description || ""}
+                cover={deck.cover_image_url}
+                href={deck.available ? `/study/${deck.slug}` : undefined}
+                noteTypes={deck.note_types?.length ?? 0}
+                available={deck.available ?? false}
               />
             ))}
           </div>
@@ -111,9 +149,9 @@ export default function DashboardPage() {
 
         {/* Bloco 3 - Mini estatísticas */}
         <section className="grid gap-4 sm:grid-cols-3">
-          <StatCard title="Streak" value={`${mockStats.streak} dias`} />
-          <StatCard title="Cards estudados" value={mockStats.totalCards} />
-          <StatCard title="Taxa de acerto (7d)" value={`${mockStats.accuracy7d}%`} />
+          <StatCard title="Streak" value="--" />
+          <StatCard title="Cards estudados" value="--" />
+          <StatCard title="Taxa de acerto (7d)" value="--" />
         </section>
 
         {/* Bloco 4 - Dica */}
@@ -144,19 +182,18 @@ function StatCard({ title, value }: { title: string; value: number | string | JS
 function DeckCard({
   title,
   description,
-  progress,
-  remaining,
+  cover,
   href,
-  status
+  noteTypes,
+  available
 }: {
   title: string;
   description: string;
-  progress: number;
-  remaining: number;
+  cover?: string | null;
   href?: string;
-  status: "available" | "soon";
+  noteTypes: number;
+  available: boolean;
 }) {
-  const barWidth = Math.min(Math.max(progress, 0), 100);
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center justify-between gap-2">
@@ -164,21 +201,13 @@ function DeckCard({
           <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           <p className="text-sm text-slate-600">{description}</p>
         </div>
-        {status === "soon" && (
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Em breve</span>
-        )}
+        {cover && <img src={cover} alt="" className="h-12 w-20 rounded object-cover" />}
       </div>
-      <div className="mt-4">
-        <div className="flex items-center justify-between text-sm text-slate-600">
-          <span>Progresso</span>
-          <span>{barWidth}%</span>
-        </div>
-        <div className="mt-2 h-2 rounded-full bg-slate-100">
-          <div className="h-2 rounded-full bg-indigo-500" style={{ width: `${barWidth}%` }} />
-        </div>
-        <p className="mt-2 text-xs text-slate-500">Faltam {remaining} cartões para concluir.</p>
+      <div className="mt-2 text-xs uppercase tracking-wide text-slate-500">
+        {available ? "Disponível" : "Em breve"}
       </div>
-      {status === "available" && href ? (
+      <div className="mt-4 text-sm text-slate-600">Modelos de nota: {noteTypes}</div>
+      {available && href ? (
         <Link
           href={href}
           className="mt-4 inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700"
@@ -187,7 +216,7 @@ function DeckCard({
         </Link>
       ) : (
         <button className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 opacity-60">
-          Em breve
+          Indisponível
         </button>
       )}
     </div>

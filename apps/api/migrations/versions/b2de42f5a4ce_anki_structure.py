@@ -388,12 +388,7 @@ def upgrade() -> None:
                 "name": "Reconhecer kana",
                 "front_template": "{{kana}}",
                 "back_template": "{{romaji}}\n{{exemplo}}\n{{audio}}",
-            },
-            {
-                "name": "Produzir kana",
-                "front_template": "{{romaji}}",
-                "back_template": "{{kana}}\n{{exemplo}}\n{{audio}}\n{{dica}}",
-            },
+            }
         ]
         hiragana_template_ids: list[int] = []
         for tpl in hiragana_templates:

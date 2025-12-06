@@ -4,38 +4,70 @@ import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthGuard } from "../../../lib/auth";
-import { DeckName, StudyCard, getDeck } from "../../../lib/mockData";
 import { apiFetch } from "../../../lib/api";
+
+type Deck = {
+  id: number;
+  slug: string;
+  name: string;
+  description?: string | null;
+  instructions_md?: string | null;
+  cover_image_url?: string | null;
+};
+
+type RenderedCard = {
+  id: number;
+  front: string;
+  back: string;
+  mnemonic?: string | null;
+  template_name?: string | null;
+};
 
 export default function StudyPage() {
   const router = useRouter();
   const params = useParams();
-  const deckParam = params?.deck as DeckName | undefined;
+  const deckParam = (params?.deck as string | undefined) || "";
 
   const { ready } = useAuthGuard(router);
-  const [cards, setCards] = useState<StudyCard[]>([]);
+  const [deck, setDeck] = useState<Deck | null>(null);
+  const [cards, setCards] = useState<RenderedCard[]>([]);
   const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ready) return;
-    if (!deckParam || (deckParam !== "hiragana" && deckParam !== "katakana")) {
+    if (!deckParam) {
       notFound();
       return;
     }
-    setCards(getDeck(deckParam));
-    setIndex(0);
-    setShowAnswer(false);
-
-    // Exemplo de chamada real para /decks/{id}/cards (ids fictícios 1 e 2)
-    const deckId = deckParam === "hiragana" ? 1 : 2;
-    apiFetch(`/decks/${deckId}/cards`)
-      .then((data) => console.log("Cards recebidos da API:", data))
-      .catch((err) => console.warn("Erro ao buscar cards reais:", err?.message));
+    setLoading(true);
+    setError(null);
+    (async () => {
+      try {
+        const decks = await apiFetch<Deck[]>("/decks");
+        const found = decks.find((d) => d.slug === deckParam || d.slug === `${deckParam}-basico`);
+        if (!found) {
+          setLoading(false);
+          notFound();
+          return;
+        }
+        setDeck(found);
+        const cardsResp = await apiFetch<RenderedCard[]>(`/decks/${found.id}/cards`);
+        setCards(cardsResp);
+        setIndex(0);
+        setShowAnswer(false);
+      } catch (err: any) {
+        setError(err?.message || "Erro ao carregar cartas");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [deckParam, ready]);
 
   if (!ready) return null;
-  if (!deckParam || (deckParam !== "hiragana" && deckParam !== "katakana")) return null;
+  if (!deckParam) return null;
 
   const current = cards[index];
   const total = cards.length;
@@ -59,12 +91,25 @@ export default function StudyPage() {
       </header>
 
       <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
-        <div className="flex items-center justify-between text-sm text-slate-600">
-          <span>Progresso: {Math.min(index, total)}/{total}</span>
-          <span>Deck: {deckParam}</span>
-        </div>
+        {deck && (
+          <div className="flex items-center justify-between text-sm text-slate-600">
+            <span>
+              Progresso: {Math.min(index, total)}/{total}
+            </span>
+            <span>Deck: {deck.name}</span>
+          </div>
+        )}
 
-        {finished ? (
+        {loading && (
+          <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm text-slate-600">
+            Carregando cartas...
+          </div>
+        )}
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 shadow-sm">{error}</div>
+        )}
+
+        {!loading && !error && finished ? (
           <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
             <p className="text-xl font-semibold text-slate-900">Sessão concluída!</p>
             <p className="mt-2 text-sm text-slate-600">
@@ -88,14 +133,16 @@ export default function StudyPage() {
               </Link>
             </div>
           </div>
-        ) : current ? (
+        ) : !loading && !error && current ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="text-center text-sm uppercase tracking-wide text-indigo-600">Flashcard</div>
-            <div className="mt-4 flex items-center justify-center text-7xl font-semibold text-slate-900">
-              {current.symbol}
+            <div className="mt-4 flex items-center justify-center text-4xl font-semibold text-slate-900 text-center whitespace-pre-wrap">
+              {current.front}
             </div>
             {showAnswer ? (
-              <div className="mt-6 text-center text-2xl font-semibold text-slate-700">{current.romaji}</div>
+              <div className="mt-6 whitespace-pre-wrap text-center text-2xl font-semibold text-slate-700">
+                {current.back}
+              </div>
             ) : (
               <div className="mt-6 text-center text-slate-500">Clique em &quot;Mostrar resposta&quot;</div>
             )}
