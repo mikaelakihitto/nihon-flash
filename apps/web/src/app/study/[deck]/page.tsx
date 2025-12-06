@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAuthGuard } from "../../../lib/auth";
 import { apiFetch } from "../../../lib/api";
 
@@ -21,6 +21,12 @@ type RenderedCard = {
   back: string;
   mnemonic?: string | null;
   template_name?: string | null;
+  note?: {
+    field_values: {
+      value_text?: string | null;
+      field?: { name: string };
+    }[];
+  };
 };
 
 export default function StudyPage() {
@@ -32,9 +38,12 @@ export default function StudyPage() {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<RenderedCard[]>([]);
   const [index, setIndex] = useState(0);
-  const [showAnswer, setShowAnswer] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!ready) return;
@@ -57,7 +66,9 @@ export default function StudyPage() {
         const cardsResp = await apiFetch<RenderedCard[]>(`/decks/${found.id}/cards`);
         setCards(cardsResp);
         setIndex(0);
-        setShowAnswer(false);
+        setAnswer("");
+        setIsCorrect(null);
+        setShowDetails(false);
       } catch (err: any) {
         setError(err?.message || "Erro ao carregar cartas");
       } finally {
@@ -65,6 +76,12 @@ export default function StudyPage() {
       }
     })();
   }, [deckParam, ready]);
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [index, loading]);
 
   if (!ready) return null;
   if (!deckParam) return null;
@@ -74,8 +91,38 @@ export default function StudyPage() {
   const finished = index >= total;
 
   function nextCard() {
-    setShowAnswer(false);
     setIndex((prev) => prev + 1);
+    setAnswer("");
+    setIsCorrect(null);
+    setShowDetails(false);
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }
+
+  function normalize(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  function expectedAnswer(card: RenderedCard): string {
+    const romaji = card.note?.field_values?.find((fv) => fv.field?.name === "romaji")?.value_text;
+    if (romaji) return romaji;
+    // fallback para primeira linha do back
+    return card.back.split("\n")[0] || card.back;
+  }
+
+  function checkAnswer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!current) return;
+    if (isCorrect !== null) {
+      nextCard();
+      return;
+    }
+    const expected = normalize(expectedAnswer(current));
+    const received = normalize(answer);
+    const ok = received === expected;
+    setIsCorrect(ok);
+    setShowDetails(false);
   }
 
   return (
@@ -139,39 +186,79 @@ export default function StudyPage() {
             <div className="mt-4 flex items-center justify-center text-4xl font-semibold text-slate-900 text-center whitespace-pre-wrap">
               {current.front}
             </div>
-            {showAnswer ? (
-              <div className="mt-6 whitespace-pre-wrap text-center text-2xl font-semibold text-slate-700">
-                {current.back}
+            <form className="mt-6 space-y-3" onSubmit={checkAnswer}>
+              <label className="block text-center text-sm text-slate-500">Digite a resposta e pressione Enter</label>
+              <input
+                ref={inputRef}
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                className={`w-full rounded-lg border px-4 py-3 text-center text-lg shadow-sm focus:outline-none focus:ring-2 ${
+                  isCorrect === null
+                    ? "border-slate-300 focus:ring-indigo-500"
+                    : isCorrect
+                    ? "border-emerald-500 ring-emerald-500"
+                    : "border-red-400 ring-red-400"
+                }`}
+                placeholder="Digite aqui"
+                autoComplete="off"
+                readOnly={isCorrect !== null}
+              />
+              <div className="flex justify-center">
+                <button
+                  type="submit"
+                  className={`rounded-lg px-4 py-2 text-white shadow ${
+                    isCorrect === null
+                      ? "bg-indigo-600 hover:bg-indigo-700"
+                      : "bg-emerald-600 hover:bg-emerald-700"
+                  } disabled:opacity-60`}
+                  disabled={isCorrect === null && !answer.trim()}
+                >
+                  {isCorrect === null ? "Verificar" : "Próximo (Enter)"}
+                </button>
               </div>
-            ) : (
-              <div className="mt-6 text-center text-slate-500">Clique em &quot;Mostrar resposta&quot;</div>
+            </form>
+
+            {isCorrect === true && (
+              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center text-emerald-800">
+                Acertou! Pressione Enter ou clique em “Próximo” para continuar.
+              </div>
+            )}
+            {isCorrect === false && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center text-red-700">
+                Resposta correta: <span className="font-semibold">{expectedAnswer(current)}</span>. Pressione Enter para avançar.
+              </div>
             )}
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-              {!showAnswer ? (
-                <button
-                  onClick={() => setShowAnswer(true)}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700"
-                >
-                  Mostrar resposta
-                </button>
-              ) : (
+            <div className="mt-6 flex justify-center gap-3">
+              {isCorrect !== null && (
                 <>
+                  <button
+                    onClick={() => setShowDetails((prev) => !prev)}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-slate-800 hover:bg-slate-100"
+                  >
+                    {showDetails ? "Ocultar detalhes" : "Ver detalhes"}
+                  </button>
                   <button
                     onClick={nextCard}
                     className="rounded-lg bg-emerald-600 px-4 py-2 text-white shadow hover:bg-emerald-700"
                   >
-                    Lembrei
-                  </button>
-                  <button
-                    onClick={nextCard}
-                    className="rounded-lg border border-slate-300 px-4 py-2 text-slate-800 hover:bg-slate-100"
-                  >
-                    Não lembrei
+                    Próximo
                   </button>
                 </>
               )}
             </div>
+
+            {showDetails && isCorrect !== null && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
+                <p className="font-semibold text-slate-900">Resposta completa:</p>
+                <div className="mt-2 whitespace-pre-wrap">{current.back}</div>
+                {current.mnemonic && (
+                  <p className="mt-2 text-slate-600">
+                    <span className="font-semibold text-slate-800">Mnemônico:</span> {current.mnemonic}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         ) : null}
       </main>
