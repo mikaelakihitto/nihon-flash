@@ -1,13 +1,17 @@
 import re
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
 from app.models import Card, Deck, Note, NoteFieldValue, NoteType
+from app.models.enums import CardStatus, LearningStage
 from app.schemas.card import RenderedCard
 from app.schemas.deck import DeckCreate, DeckRead, DeckUpdate
+from app.schemas.deck_stats import CardWithStats, DeckStats
 from app.schemas.note import NoteRead
 from app.schemas.note_type import NoteTypeSummary
 from app.services.notes import build_note_context, render_template
@@ -196,3 +200,93 @@ def list_cards(deck_id: int, db: Session = Depends(get_db)):
         )
 
     return rendered
+
+
+@router.get("/{deck_id}/stats", response_model=DeckStats)
+def deck_stats(deck_id: int, db: Session = Depends(get_db)):
+    deck = db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+
+    now = datetime.utcnow()
+    end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    cards_query = db.query(Card).join(Note).filter(Note.deck_id == deck_id)
+    total_cards = cards_query.count()
+
+    due_today = (
+        cards_query.filter(Card.status != CardStatus.new, Card.status != CardStatus.suspended, Card.due_at != None, Card.due_at <= end_of_day)  # noqa: E711
+        .with_entities(func.count())
+        .scalar()
+        or 0
+    )
+
+    next_due = (
+        cards_query.filter(Card.due_at != None)  # noqa: E711
+        .order_by(Card.due_at)
+        .with_entities(Card.due_at)
+        .first()
+    )
+    next_due_at = next_due[0] if next_due else None
+
+    totals = cards_query.with_entities(func.sum(Card.reps), func.sum(Card.lapses)).first()
+    sum_reps = totals[0] or 0
+    sum_lapses = totals[1] or 0
+    avg_reps = float(sum_reps) / total_cards if total_cards else None
+    accuracy_estimate = None
+    if sum_reps:
+        accuracy_estimate = max(0.0, (sum_reps - sum_lapses) / sum_reps)
+
+    stage_counts = (
+        cards_query.with_entities(Card.stage, func.count())
+        .group_by(Card.stage)
+        .all()
+    )
+    stage_distribution = {stage.value if stage else "unknown": count for stage, count in stage_counts}
+
+    return DeckStats(
+        total_cards=total_cards,
+        due_today=due_today,
+        next_due_at=next_due_at,
+        avg_reps=avg_reps,
+        total_lapses=sum_lapses,
+        accuracy_estimate=accuracy_estimate,
+        stage_distribution=stage_distribution,
+    )
+
+
+@router.get("/{deck_id}/cards-with-stats", response_model=list[CardWithStats])
+def deck_cards_with_stats(deck_id: int, db: Session = Depends(get_db)):
+    deck = db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+
+    cards = (
+        db.query(Card)
+        .join(Note)
+        .options(joinedload(Card.template), joinedload(Card.note))
+        .filter(Note.deck_id == deck_id)
+        .order_by(Card.id)
+        .all()
+    )
+
+    result: list[CardWithStats] = []
+    for card in cards:
+        context = build_note_context(card.note)
+        front = render_template(card.template.front_template, context)
+        preview = front if len(front) <= 80 else front[:77] + "..."
+        result.append(
+            CardWithStats(
+                id=card.id,
+                front=preview,
+                status=card.status.value if card.status else "unknown",
+                stage=card.stage.value if getattr(card, "stage", None) else None,
+                due_at=card.due_at,
+                reps=card.reps,
+                lapses=card.lapses,
+                srs_interval=card.srs_interval,
+                srs_ease=card.srs_ease,
+                last_reviewed_at=card.last_reviewed_at,
+            )
+        )
+    return result

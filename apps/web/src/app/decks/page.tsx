@@ -90,12 +90,20 @@ export default function DecksPage() {
                 {deck.note_types?.length ?? 0} modelos de nota | slug: {deck.slug}
               </p>
               {deck.available ? (
-                <Link
-                  href={`/study/${deck.slug}`}
-                  className="mt-4 inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700"
-                >
-                  Estudar
-                </Link>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Link
+                    href={`/study/${deck.slug}`}
+                    className="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700"
+                  >
+                    Estudar
+                  </Link>
+                  <Link
+                    href={`/decks/${deck.slug}`}
+                    className="inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                  >
+                    Ver estatísticas
+                  </Link>
+                </div>
               ) : (
                 <button className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 opacity-60">
                   Em breve

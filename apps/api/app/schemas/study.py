@@ -33,3 +33,8 @@ class ReviewResponse(BaseModel):
     lapses: int | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ReviewStats(BaseModel):
+    due_count_today: int
+    next_due_at: datetime | None = None

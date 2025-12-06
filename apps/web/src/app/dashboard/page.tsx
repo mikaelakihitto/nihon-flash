@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearToken, useAuthGuard } from "../../lib/auth";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, fetchDeckReviewStats } from "../../lib/api";
 
 type Deck = {
   id: number;
@@ -18,6 +18,11 @@ type Deck = {
   tags?: string[];
   note_types?: { template_count: number; field_count: number }[];
   available?: boolean;
+};
+
+type DeckStats = {
+  due_count_today: number;
+  next_due_at: string | null;
 };
 
 const placeholders: Deck[] = [
@@ -55,6 +60,7 @@ export default function DashboardPage() {
   const { ready } = useAuthGuard(router);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<Record<number, DeckStats>>({});
 
   useEffect(() => {
     if (!ready) return;
@@ -64,6 +70,26 @@ export default function DashboardPage() {
       })
       .catch((err) => setError(err?.message || "Erro ao carregar decks"));
   }, [ready]);
+
+  useEffect(() => {
+    if (!decks.length) return;
+    Promise.all(
+      decks.map(async (deck) => {
+        try {
+          const deckStats = await fetchDeckReviewStats(deck.id);
+          return [deck.id, deckStats] as const;
+        } catch {
+          return [deck.id, { due_count_today: 0, next_due_at: null }] as const;
+        }
+      })
+    ).then((entries) => {
+      const mapped: Record<number, DeckStats> = {};
+      entries.forEach(([id, st]) => {
+        mapped[id] = st;
+      });
+      setStats(mapped);
+    });
+  }, [decks]);
 
   if (!ready) return null;
 
@@ -147,8 +173,10 @@ export default function DashboardPage() {
                 description={deck.description || ""}
                 cover={deck.cover_image_url}
                 href={deck.available ? `/study/${deck.slug}` : undefined}
+                detailsHref={deck.available ? `/decks/${deck.slug}` : undefined}
                 noteTypes={deck.note_types?.length ?? 0}
                 available={deck.available ?? false}
+                stats={deck.available ? stats[deck.id] : undefined}
               />
             ))}
           </div>
@@ -191,16 +219,30 @@ function DeckCard({
   description,
   cover,
   href,
+  detailsHref,
   noteTypes,
-  available
+  available,
+  stats
 }: {
   title: string;
   description: string;
   cover?: string | null;
   href?: string;
+  detailsHref?: string;
   noteTypes: number;
   available: boolean;
+  stats?: DeckStats;
 }) {
+  const dueText = stats ? stats.due_count_today : "--";
+  const nextDue =
+    stats && stats.next_due_at
+      ? new Date(stats.next_due_at).toLocaleString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          day: "2-digit",
+          month: "2-digit"
+        })
+      : "—";
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center justify-between gap-2">
@@ -213,14 +255,28 @@ function DeckCard({
       <div className="mt-2 text-xs uppercase tracking-wide text-slate-500">
         {available ? "Disponível" : "Em breve"}
       </div>
-      <div className="mt-4 text-sm text-slate-600">Modelos de nota: {noteTypes}</div>
+      <div className="mt-4 text-sm text-slate-600 space-y-1">
+        <div>Modelos de nota: {noteTypes}</div>
+        <div>Devidos hoje: {dueText}</div>
+        <div>Próxima revisão: {nextDue}</div>
+      </div>
       {available && href ? (
-        <Link
-          href={href}
-          className="mt-4 inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700"
-        >
-          Estudar
-        </Link>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href={href}
+            className="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-700"
+          >
+            Estudar
+          </Link>
+          {detailsHref && (
+            <Link
+              href={detailsHref}
+              className="inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100"
+            >
+              Ver detalhes
+            </Link>
+          )}
+        </div>
       ) : (
         <button className="mt-4 inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 opacity-60">
           Indisponível

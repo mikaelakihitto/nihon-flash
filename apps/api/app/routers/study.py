@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -9,7 +9,7 @@ from app.models import Card, CardTemplate, Deck, Note, NoteFieldValue
 from app.models.enums import CardStatus
 from app.schemas.card import RenderedCard
 from app.schemas.note import NoteRead
-from app.schemas.study import ReviewResponse, ReviewResult, StudyBatch, StudySubmit
+from app.schemas.study import ReviewResponse, ReviewResult, ReviewStats, StudyBatch, StudySubmit
 from app.services.notes import build_note_context, render_template
 from app.services.srs import apply_review
 
@@ -148,3 +148,40 @@ def review_card(card_id: int, payload: ReviewResult, db: Session = Depends(get_d
         reps=card.reps,
         lapses=card.lapses,
     )
+
+
+@router.get("/decks/{deck_id}/review-stats", response_model=ReviewStats)
+def get_review_stats(deck_id: int, db: Session = Depends(get_db)):
+    deck = db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+
+    now = datetime.utcnow()
+    end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    base_query = (
+        db.query(Card)
+        .join(Note)
+        .filter(
+            Note.deck_id == deck_id,
+            Card.status != CardStatus.suspended,
+            Card.status != CardStatus.new,
+        )
+    )
+
+    due_today_count = (
+        base_query.filter(Card.due_at != None, Card.due_at <= end_of_day)  # noqa: E711
+        .with_entities(func.count())
+        .scalar()
+        or 0
+    )
+
+    next_due_at = (
+        base_query.filter(Card.due_at != None)  # noqa: E711
+        .order_by(Card.due_at)
+        .with_entities(Card.due_at)
+        .first()
+    )
+    next_due_value = next_due_at[0] if next_due_at else None
+
+    return ReviewStats(due_count_today=due_today_count, next_due_at=next_due_value)

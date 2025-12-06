@@ -53,3 +53,15 @@ export async function submitReview(cardId: number, result: { correct: boolean })
     body: JSON.stringify(result)
   });
 }
+
+export async function fetchDeckReviewStats(deckId: number): Promise<{ due_count_today: number; next_due_at: string | null }> {
+  return apiFetch(`/decks/${deckId}/review-stats`);
+}
+
+export async function fetchDeckStats(deckId: number) {
+  return apiFetch(`/decks/${deckId}/stats`);
+}
+
+export async function fetchCardsWithStats<T>(deckId: number) {
+  return apiFetch<T[]>(`/decks/${deckId}/cards-with-stats`);
+}
