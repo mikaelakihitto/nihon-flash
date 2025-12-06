@@ -1,26 +1,197 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
-from app.models.card import Card
-from app.models.deck import Deck
-from app.schemas.card import CardRead
-from app.schemas.deck import DeckRead
+from app.models import Card, Deck, Note, NoteFieldValue, NoteType
+from app.schemas.card import RenderedCard
+from app.schemas.deck import DeckCreate, DeckRead, DeckUpdate
+from app.schemas.note import NoteRead
+from app.schemas.note_type import NoteTypeSummary
+from app.services.notes import build_note_context, render_template
 
 router = APIRouter(prefix="/decks", tags=["decks"])
 
 
+def _slugify(value: str) -> str:
+    value = value.lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    value = value.strip("-")
+    return value or "deck"
+
+
+def _build_deck_response(deck: Deck) -> DeckRead:
+    summaries = [
+        NoteTypeSummary(
+            id=nt.id,
+            name=nt.name,
+            description=nt.description,
+            template_count=len(nt.templates),
+            field_count=len(nt.fields),
+        )
+        for nt in deck.note_types
+    ]
+    return DeckRead(
+        id=deck.id,
+        name=deck.name,
+        slug=deck.slug,
+        description=deck.description,
+        description_md=deck.description_md,
+        cover_image_url=deck.cover_image_url,
+        instructions_md=deck.instructions_md,
+        source_lang=deck.source_lang,
+        target_lang=deck.target_lang,
+        is_public=deck.is_public,
+        tags=deck.tags or [],
+        owner_id=deck.owner_id,
+        note_types=summaries,
+    )
+
+
 @router.get("", response_model=list[DeckRead])
 def list_decks(db: Session = Depends(get_db)):
-    decks = db.execute(select(Deck)).scalars().all()
-    return decks
+    decks = (
+        db.query(Deck)
+        .options(
+            selectinload(Deck.note_types).selectinload(NoteType.templates),
+            selectinload(Deck.note_types).selectinload(NoteType.fields),
+        )
+        .all()
+    )
+    return [_build_deck_response(deck) for deck in decks]
 
 
-@router.get("/{deck_id}/cards", response_model=list[CardRead])
+@router.post("", response_model=DeckRead, status_code=status.HTTP_201_CREATED)
+def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db)):
+    slug = deck_in.slug or _slugify(deck_in.name)
+    exists = db.scalar(select(Deck.id).where(Deck.slug == slug))
+    if exists:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slug already in use")
+
+    deck = Deck(
+        name=deck_in.name,
+        slug=slug,
+        description=deck_in.description,
+        description_md=deck_in.description_md or deck_in.description,
+        cover_image_url=deck_in.cover_image_url,
+        instructions_md=deck_in.instructions_md,
+        source_lang=deck_in.source_lang,
+        target_lang=deck_in.target_lang,
+        is_public=deck_in.is_public,
+        tags=deck_in.tags or [],
+        owner_id=deck_in.owner_id,
+    )
+    db.add(deck)
+    db.commit()
+    db.refresh(deck)
+    return _build_deck_response(deck)
+
+
+@router.get("/{deck_id}", response_model=DeckRead)
+def get_deck(deck_id: int, db: Session = Depends(get_db)):
+    deck = (
+        db.query(Deck)
+        .options(
+            selectinload(Deck.note_types).selectinload(NoteType.templates),
+            selectinload(Deck.note_types).selectinload(NoteType.fields),
+        )
+        .filter(Deck.id == deck_id)
+        .first()
+    )
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    return _build_deck_response(deck)
+
+
+@router.put("/{deck_id}", response_model=DeckRead)
+def update_deck(deck_id: int, deck_in: DeckUpdate, db: Session = Depends(get_db)):
+    deck = db.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+
+    if deck_in.slug is not None:
+        slug = deck_in.slug or _slugify(deck_in.name or deck.name)
+        exists = db.scalar(select(Deck.id).where(Deck.slug == slug, Deck.id != deck_id))
+        if exists:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slug already in use")
+        deck.slug = slug
+
+    for field_name in [
+        "name",
+        "description",
+        "description_md",
+        "cover_image_url",
+        "instructions_md",
+        "source_lang",
+        "target_lang",
+        "is_public",
+    ]:
+        value = getattr(deck_in, field_name)
+        if value is not None:
+            setattr(deck, field_name, value)
+
+    if deck_in.tags is not None:
+        deck.tags = deck_in.tags
+
+    db.commit()
+    db.refresh(deck)
+    deck = (
+        db.query(Deck)
+        .options(
+            selectinload(Deck.note_types).selectinload(NoteType.templates),
+            selectinload(Deck.note_types).selectinload(NoteType.fields),
+        )
+        .filter(Deck.id == deck_id)
+        .first()
+    )
+    return _build_deck_response(deck)
+
+
+@router.get("/{deck_id}/cards", response_model=list[RenderedCard])
 def list_cards(deck_id: int, db: Session = Depends(get_db)):
     deck = db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
-    cards = db.execute(select(Card).where(Card.deck_id == deck_id)).scalars().all()
-    return cards
+
+    cards = (
+        db.query(Card)
+        .join(Note)
+        .options(
+            joinedload(Card.template),
+            joinedload(Card.note).joinedload(Note.field_values).joinedload(NoteFieldValue.field),
+            joinedload(Card.note).joinedload(Note.field_values).joinedload(NoteFieldValue.media_asset),
+            joinedload(Card.note).joinedload(Note.note_type),
+        )
+        .filter(Note.deck_id == deck_id)
+        .all()
+    )
+
+    rendered: list[RenderedCard] = []
+    for card in cards:
+        context = build_note_context(card.note)
+        front = render_template(card.template.front_template, context)
+        back = render_template(card.template.back_template, context)
+        note_read = NoteRead.model_validate(card.note, from_attributes=True)
+        rendered.append(
+            RenderedCard(
+                id=card.id,
+                note_id=card.note_id,
+                card_template_id=card.card_template_id,
+                mnemonic=card.mnemonic,
+                status=card.status,
+                srs_interval=card.srs_interval,
+                srs_ease=card.srs_ease,
+                due_at=card.due_at,
+                last_reviewed_at=card.last_reviewed_at,
+                lapses=card.lapses,
+                reps=card.reps,
+                front=front,
+                back=back,
+                note=note_read,
+                template_name=card.template.name if card.template else None,
+            )
+        )
+
+    return rendered
