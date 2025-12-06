@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearToken, useAuthGuard } from "../../lib/auth";
-import { apiFetch, fetchDeckReviewStats } from "../../lib/api";
+import { apiFetch, fetchDeckReviewStats, fetchDeckStats } from "../../lib/api";
 
 type Deck = {
   id: number;
@@ -23,6 +23,16 @@ type Deck = {
 type DeckStats = {
   due_count_today: number;
   next_due_at: string | null;
+};
+
+type DeckFullStats = {
+  total_cards: number;
+  due_today: number;
+  next_due_at: string | null;
+  avg_reps: number | null;
+  total_lapses: number | null;
+  accuracy_estimate: number | null;
+  stage_distribution: Record<string, number>;
 };
 
 const placeholders: Deck[] = [
@@ -60,7 +70,8 @@ export default function DashboardPage() {
   const { ready } = useAuthGuard(router);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<Record<number, DeckStats>>({});
+  const [reviewStats, setReviewStats] = useState<Record<number, DeckStats>>({});
+  const [fullStats, setFullStats] = useState<Record<number, DeckFullStats>>({});
 
   useEffect(() => {
     if (!ready) return;
@@ -75,21 +86,47 @@ export default function DashboardPage() {
     if (!decks.length) return;
     Promise.all(
       decks.map(async (deck) => {
+        const fallbackReview = { due_count_today: 0, next_due_at: null };
+        const fallbackFull: DeckFullStats = {
+          total_cards: 0,
+          due_today: 0,
+          next_due_at: null,
+          avg_reps: null,
+          total_lapses: null,
+          accuracy_estimate: null,
+          stage_distribution: {}
+        };
         try {
-          const deckStats = await fetchDeckReviewStats(deck.id);
-          return [deck.id, deckStats] as const;
+          const [review, full] = await Promise.all([
+            fetchDeckReviewStats(deck.id).catch(() => fallbackReview),
+            fetchDeckStats(deck.id).catch(() => fallbackFull)
+          ]);
+          return [deck.id, review, full] as const;
         } catch {
-          return [deck.id, { due_count_today: 0, next_due_at: null }] as const;
+          return [deck.id, fallbackReview, fallbackFull] as const;
         }
       })
     ).then((entries) => {
-      const mapped: Record<number, DeckStats> = {};
-      entries.forEach(([id, st]) => {
-        mapped[id] = st;
+      const reviewMap: Record<number, DeckStats> = {};
+      const fullMap: Record<number, DeckFullStats> = {};
+      entries.forEach(([id, review, full]) => {
+        reviewMap[id] = review;
+        fullMap[id] = full as DeckFullStats;
       });
-      setStats(mapped);
+      setReviewStats(reviewMap);
+      setFullStats(fullMap);
     });
   }, [decks]);
+
+  const summary = (() => {
+    const dueTotal = decks.reduce((acc, deck) => acc + (reviewStats[deck.id]?.due_count_today || 0), 0);
+    const nextDates = decks
+      .map((deck) => reviewStats[deck.id]?.next_due_at || fullStats[deck.id]?.next_due_at)
+      .filter(Boolean)
+      .map((d) => new Date(d as string).getTime());
+    const nextDue = nextDates.length ? new Date(Math.min(...nextDates)) : null;
+    return { dueTotal, nextDue, activeDecks: decks.length };
+  })();
 
   if (!ready) return null;
 
@@ -108,10 +145,6 @@ export default function DashboardPage() {
           >
             Ver decks
           </Link>
-          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
-            <p className="font-semibold">🔥 Streak: --</p>
-            <p className="text-xs text-slate-500">Cards para hoje: --</p>
-          </div>
           <Link
             href="/profile"
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
@@ -137,9 +170,18 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="space-y-2">
               <p className="text-sm uppercase tracking-[0.2em] text-indigo-600">Próxima ação</p>
-              <h2 className="text-3xl font-semibold text-slate-900">Você tem cards para revisar hoje</h2>
+              <h2 className="text-3xl font-semibold text-slate-900">
+                Você tem {summary.dueTotal || "—"} cards para revisar hoje
+              </h2>
               <p className="text-slate-600">
-                Comece pela revisão para consolidar sua memória antes de ver novos símbolos.
+                {summary.nextDue
+                  ? `Próxima revisão: ${summary.nextDue.toLocaleString("pt-BR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      day: "2-digit",
+                      month: "2-digit"
+                    })}`
+                  : "Nenhuma revisão agendada agora."}
               </p>
             </div>
             <div className="flex flex-col gap-3 md:w-64">
@@ -147,7 +189,7 @@ export default function DashboardPage() {
                 href="/study/hiragana"
                 className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-center text-white shadow hover:bg-indigo-700"
               >
-                Começar revisão agora
+                Começar Estudar agora
               </Link>
               <Link
                 href="/review/hiragana"
@@ -176,17 +218,11 @@ export default function DashboardPage() {
                 detailsHref={deck.available ? `/decks/${deck.slug}` : undefined}
                 noteTypes={deck.note_types?.length ?? 0}
                 available={deck.available ?? false}
-                stats={deck.available ? stats[deck.id] : undefined}
+                stats={deck.available ? reviewStats[deck.id] : undefined}
+                full={deck.available ? fullStats[deck.id] : undefined}
               />
             ))}
           </div>
-        </section>
-
-        {/* Bloco 3 - Mini estatísticas */}
-        <section className="grid gap-4 sm:grid-cols-3">
-          <StatCard title="Streak" value="--" />
-          <StatCard title="Cards estudados" value="--" />
-          <StatCard title="Taxa de acerto (7d)" value="--" />
         </section>
 
         {/* Bloco 4 - Dica */}
@@ -222,7 +258,8 @@ function DeckCard({
   detailsHref,
   noteTypes,
   available,
-  stats
+  stats,
+  full
 }: {
   title: string;
   description: string;
@@ -232,6 +269,7 @@ function DeckCard({
   noteTypes: number;
   available: boolean;
   stats?: DeckStats;
+  full?: DeckFullStats;
 }) {
   const dueText = stats ? stats.due_count_today : "--";
   const nextDue =
@@ -243,6 +281,7 @@ function DeckCard({
           month: "2-digit"
         })
       : "—";
+  const total = full?.total_cards ?? "--";
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center justify-between gap-2">
@@ -257,6 +296,7 @@ function DeckCard({
       </div>
       <div className="mt-4 text-sm text-slate-600 space-y-1">
         <div>Modelos de nota: {noteTypes}</div>
+        <div>Total: {total}</div>
         <div>Devidos hoje: {dueText}</div>
         <div>Próxima revisão: {nextDue}</div>
       </div>
