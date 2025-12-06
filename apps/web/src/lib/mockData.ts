@@ -6,6 +6,17 @@ export type StudyCard = {
 };
 
 export type DeckName = "hiragana" | "katakana";
+export type DeckMetaStatus = "available" | "soon";
+export type DeckMeta = {
+  id: number;
+  key: DeckName | "vocab" | "kanji";
+  name: string;
+  description: string;
+  totalCards: number;
+  completedCards: number;
+  pendingReviews: number;
+  status: DeckMetaStatus;
+};
 
 const hiragana: StudyCard[] = [
   { id: 1, symbol: "あ", romaji: "a" },
@@ -120,5 +131,52 @@ export const mockStats = {
   progress: {
     hiragana: `${hiragana.length}/${hiragana.length}`,
     katakana: `${katakana.length}/${katakana.length}`
-  }
+  },
+  streak: 5,
+  totalCards: 312,
+  accuracy7d: 82,
+  cardsForToday: 24
 };
+
+export const deckMeta: DeckMeta[] = [
+  {
+    id: 1,
+    key: "hiragana",
+    name: "Hiragana - Básico",
+    description: "46 caracteres essenciais do silabário Hiragana.",
+    totalCards: hiragana.length,
+    completedCards: 28,
+    pendingReviews: 12,
+    status: "available"
+  },
+  {
+    id: 2,
+    key: "katakana",
+    name: "Katakana - Básico",
+    description: "46 caracteres para palavras estrangeiras e ênfase.",
+    totalCards: katakana.length,
+    completedCards: 10,
+    pendingReviews: 18,
+    status: "available"
+  },
+  {
+    id: 3,
+    key: "vocab",
+    name: "Vocabulário N5 (Em breve)",
+    description: "Vocabulário essencial do JLPT N5.",
+    totalCards: 150,
+    completedCards: 0,
+    pendingReviews: 0,
+    status: "soon"
+  },
+  {
+    id: 4,
+    key: "kanji",
+    name: "Kanji N5 (Em breve)",
+    description: "Primeiros kanji com leituras e significados.",
+    totalCards: 100,
+    completedCards: 0,
+    pendingReviews: 0,
+    status: "soon"
+  }
+];
