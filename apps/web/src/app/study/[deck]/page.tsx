@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useAuthGuard } from "../../../lib/auth";
-import { apiFetch } from "../../../lib/api";
+import { apiFetch, fetchStudyBatch, submitStudyResults } from "../../../lib/api";
 
 type Deck = {
   id: number;
@@ -37,12 +37,16 @@ export default function StudyPage() {
   const { ready } = useAuthGuard(router);
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<RenderedCard[]>([]);
-  const [index, setIndex] = useState(0);
+  const [phase, setPhase] = useState<"preview" | "quiz" | "finished">("preview");
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [queue, setQueue] = useState<number[]>([]);
+  const [previewVisited, setPreviewVisited] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [results, setResults] = useState<Record<number, boolean | null>>({});
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -63,12 +67,8 @@ export default function StudyPage() {
           return;
         }
         setDeck(found);
-        const cardsResp = await apiFetch<RenderedCard[]>(`/decks/${found.id}/cards`);
-        setCards(cardsResp);
-        setIndex(0);
-        setAnswer("");
-        setIsCorrect(null);
-        setShowDetails(false);
+        const quizBatch = await fetchStudyBatch<RenderedCard>(found.id, 5);
+        startSession("preview", quizBatch);
       } catch (err: any) {
         setError(err?.message || "Erro ao carregar cartas");
       } finally {
@@ -78,24 +78,59 @@ export default function StudyPage() {
   }, [deckParam, ready]);
 
   useEffect(() => {
-    if (inputRef.current) {
+    if (inputRef.current && phase === "quiz") {
       inputRef.current.focus();
     }
-  }, [index, loading]);
+  }, [queue, loading, phase]);
+
+  useEffect(() => {
+    if (phase !== "preview") return;
+    setPreviewVisited((prev) => {
+      if (prev.has(previewIndex)) return prev;
+      const next = new Set(prev);
+      next.add(previewIndex);
+      return next;
+    });
+  }, [previewIndex, phase]);
 
   if (!ready) return null;
   if (!deckParam) return null;
 
-  const current = cards[index];
+  const currentIdx = phase === "quiz" ? queue[0] : previewIndex;
+  const current = cards[currentIdx];
   const total = cards.length;
-  const finished = index >= total;
+  const finished = phase === "finished";
 
-  function nextCard() {
-    setIndex((prev) => prev + 1);
+  function startSession(newPhase: "preview" | "quiz", cardList = cards) {
+    setCards(cardList);
+    setPhase(newPhase);
+    setPreviewIndex(0);
+    setQueue(newPhase === "quiz" ? cardList.map((_, i) => i) : []);
+    setPreviewVisited(cardList.length ? new Set([0]) : new Set());
     setAnswer("");
     setIsCorrect(null);
     setShowDetails(false);
-    if (inputRef.current) {
+    setResults(
+      cardList.reduce<Record<number, boolean | null>>((acc, card) => {
+        acc[card.id] = null;
+        return acc;
+      }, {})
+    );
+    if (inputRef.current && newPhase === "quiz") inputRef.current.focus();
+  }
+
+  function nextCard() {
+    if (phase === "preview") {
+      setPreviewIndex((prev) => Math.min(prev + 1, cards.length - 1));
+      return;
+    }
+    // quiz: state already updated in checkAnswer; just reset UI and move to next in queue
+    setAnswer("");
+    setIsCorrect(null);
+    setShowDetails(false);
+    if (queue.length === 0) {
+      finishSession();
+    } else if (inputRef.current) {
       inputRef.current.focus();
     }
   }
@@ -113,7 +148,7 @@ export default function StudyPage() {
 
   function checkAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!current) return;
+    if (!current || phase !== "quiz") return;
     if (isCorrect !== null) {
       nextCard();
       return;
@@ -123,6 +158,36 @@ export default function StudyPage() {
     const ok = received === expected;
     setIsCorrect(ok);
     setShowDetails(false);
+    setResults((prev) => ({ ...prev, [current.id]: ok }));
+    if (ok) {
+      setQueue((prev) => {
+        const next = prev.slice(1);
+        if (next.length === 0) {
+          setTimeout(() => finishSession(), 150);
+        }
+        return next;
+      });
+    } else {
+      // move current to end of queue to tentar novamente depois
+      setQueue((prev) => {
+        const [, ...rest] = prev;
+        return [...rest, currentIdx];
+      });
+    }
+  }
+
+  function finishSession() {
+    setPhase("finished");
+    if (deck) {
+      const payload = {
+        deck_id: deck.id,
+        results: Object.entries(results).map(([card_id, correct]) => ({
+          card_id: Number(card_id),
+          correct: !!correct
+        }))
+      };
+      submitStudyResults(payload).catch((err) => console.warn("Falha ao enviar resultados (stub):", err));
+    }
   }
 
   return (
@@ -141,7 +206,12 @@ export default function StudyPage() {
         {deck && (
           <div className="flex items-center justify-between text-sm text-slate-600">
             <span>
-              Progresso: {Math.min(index, total)}/{total}
+              Fase: {phase === "preview" ? "Estudo" : phase === "quiz" ? "Quiz" : "Finalizado"} |{" "}
+              {phase === "preview"
+                ? `${previewIndex + 1}/${total || 1}`
+                : phase === "quiz"
+                ? `${total - queue.length}/${total} corretos`
+                : `${total}/${total} concluído`}
             </span>
             <span>Deck: {deck.name}</span>
           </div>
@@ -158,19 +228,14 @@ export default function StudyPage() {
 
         {!loading && !error && finished ? (
           <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <p className="text-xl font-semibold text-slate-900">Sessão concluída!</p>
-            <p className="mt-2 text-sm text-slate-600">
-              Você passou por todas as cartas deste deck. Volte ao dashboard ou reinicie a sessão.
-            </p>
-            <div className="mt-4 flex justify-center gap-3">
+            <p className="text-xl font-semibold text-slate-900">Quiz concluído!</p>
+            <p className="mt-2 text-sm text-slate-600">Você acertou todos os cards. Eles serão enviados para revisão.</p>
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
               <button
-                onClick={() => {
-                  setIndex(0);
-                  setShowAnswer(false);
-                }}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700"
+                onClick={() => startSession("preview")}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-slate-800 hover:bg-slate-100"
               >
-                Reiniciar deck
+                Estudar novamente
               </button>
               <Link
                 href="/dashboard"
@@ -182,82 +247,117 @@ export default function StudyPage() {
           </div>
         ) : !loading && !error && current ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-            <div className="text-center text-sm uppercase tracking-wide text-indigo-600">Flashcard</div>
+            <div className="text-center text-sm uppercase tracking-wide text-indigo-600">
+              {phase === "preview" ? "Estudo" : "Quiz"}
+            </div>
             <div className="mt-4 flex items-center justify-center text-4xl font-semibold text-slate-900 text-center whitespace-pre-wrap">
               {current.front}
             </div>
-            <form className="mt-6 space-y-3" onSubmit={checkAnswer}>
-              <label className="block text-center text-sm text-slate-500">Digite a resposta e pressione Enter</label>
-              <input
-                ref={inputRef}
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                className={`w-full rounded-lg border px-4 py-3 text-center text-lg shadow-sm focus:outline-none focus:ring-2 ${
-                  isCorrect === null
-                    ? "border-slate-300 focus:ring-indigo-500"
-                    : isCorrect
-                    ? "border-emerald-500 ring-emerald-500"
-                    : "border-red-400 ring-red-400"
-                }`}
-                placeholder="Digite aqui"
-                autoComplete="off"
-                readOnly={isCorrect !== null}
-              />
-              <div className="flex justify-center">
-                <button
-                  type="submit"
-                  className={`rounded-lg px-4 py-2 text-white shadow ${
-                    isCorrect === null
-                      ? "bg-indigo-600 hover:bg-indigo-700"
-                      : "bg-emerald-600 hover:bg-emerald-700"
-                  } disabled:opacity-60`}
-                  disabled={isCorrect === null && !answer.trim()}
-                >
-                  {isCorrect === null ? "Verificar" : "Próximo (Enter)"}
-                </button>
-              </div>
-            </form>
 
-            {isCorrect === true && (
-              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center text-emerald-800">
-                Acertou! Pressione Enter ou clique em “Próximo” para continuar.
-              </div>
-            )}
-            {isCorrect === false && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center text-red-700">
-                Resposta correta: <span className="font-semibold">{expectedAnswer(current)}</span>. Pressione Enter para avançar.
-              </div>
-            )}
-
-            <div className="mt-6 flex justify-center gap-3">
-              {isCorrect !== null && (
-                <>
+            {phase === "preview" ? (
+              <>
+                <div className="mt-4 whitespace-pre-wrap text-center text-xl text-slate-700">{current.back}</div>
+                <div className="mt-6 flex justify-center gap-3">
                   <button
-                    onClick={() => setShowDetails((prev) => !prev)}
+                    onClick={() => setPreviewIndex((prev) => Math.max(prev - 1, 0))}
                     className="rounded-lg border border-slate-300 px-4 py-2 text-slate-800 hover:bg-slate-100"
+                    disabled={previewIndex === 0}
                   >
-                    {showDetails ? "Ocultar detalhes" : "Ver detalhes"}
+                    Anterior
                   </button>
                   <button
-                    onClick={nextCard}
-                    className="rounded-lg bg-emerald-600 px-4 py-2 text-white shadow hover:bg-emerald-700"
+                    onClick={() => setPreviewIndex((prev) => Math.min(prev + 1, cards.length - 1))}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-slate-800 hover:bg-slate-100"
+                    disabled={previewIndex === cards.length - 1}
                   >
                     Próximo
                   </button>
-                </>
-              )}
-            </div>
+                  <button
+                    onClick={() => startSession("quiz", cards)}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700 disabled:opacity-60"
+                    disabled={previewVisited.size < cards.length}
+                  >
+                    Iniciar quiz
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <form className="mt-6 space-y-3" onSubmit={checkAnswer}>
+                  <label className="block text-center text-sm text-slate-500">Digite a resposta e pressione Enter</label>
+                  <input
+                    ref={inputRef}
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    className={`w-full rounded-lg border px-4 py-3 text-center text-lg shadow-sm focus:outline-none focus:ring-2 ${
+                      isCorrect === null
+                        ? "border-slate-300 focus:ring-indigo-500"
+                        : isCorrect
+                        ? "border-emerald-500 ring-emerald-500"
+                        : "border-red-400 ring-red-400"
+                    }`}
+                    placeholder="Digite aqui"
+                    autoComplete="off"
+                    readOnly={isCorrect !== null}
+                  />
+                  <div className="flex justify-center">
+                    <button
+                      type="submit"
+                      className={`rounded-lg px-4 py-2 text-white shadow ${
+                        isCorrect === null
+                          ? "bg-indigo-600 hover:bg-indigo-700"
+                          : "bg-emerald-600 hover:bg-emerald-700"
+                      } disabled:opacity-60`}
+                      disabled={isCorrect === null && !answer.trim()}
+                    >
+                      {isCorrect === null ? "Verificar" : "Próximo (Enter)"}
+                    </button>
+                  </div>
+                </form>
 
-            {showDetails && isCorrect !== null && (
-              <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
-                <p className="font-semibold text-slate-900">Resposta completa:</p>
-                <div className="mt-2 whitespace-pre-wrap">{current.back}</div>
-                {current.mnemonic && (
-                  <p className="mt-2 text-slate-600">
-                    <span className="font-semibold text-slate-800">Mnemônico:</span> {current.mnemonic}
-                  </p>
+                {isCorrect === true && (
+                  <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center text-emerald-800">
+                    Acertou! Pressione Enter ou clique em “Próximo” para continuar.
+                  </div>
                 )}
-              </div>
+                {isCorrect === false && (
+                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-center text-red-700">
+                    Resposta correta: <span className="font-semibold">{expectedAnswer(current)}</span>. Pressione Enter
+                    para avançar.
+                  </div>
+                )}
+
+                <div className="mt-6 flex justify-center gap-3">
+                  {isCorrect !== null && (
+                    <>
+                      <button
+                        onClick={() => setShowDetails((prev) => !prev)}
+                        className="rounded-lg border border-slate-300 px-4 py-2 text-slate-800 hover:bg-slate-100"
+                      >
+                        {showDetails ? "Ocultar detalhes" : "Ver detalhes"}
+                      </button>
+                      <button
+                        onClick={nextCard}
+                        className="rounded-lg bg-emerald-600 px-4 py-2 text-white shadow hover:bg-emerald-700"
+                      >
+                        Próximo
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {showDetails && isCorrect !== null && (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
+                    <p className="font-semibold text-slate-900">Resposta completa:</p>
+                    <div className="mt-2 whitespace-pre-wrap">{current.back}</div>
+                    {current.mnemonic && (
+                      <p className="mt-2 text-slate-600">
+                        <span className="font-semibold text-slate-800">Mnemônico:</span> {current.mnemonic}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         ) : null}

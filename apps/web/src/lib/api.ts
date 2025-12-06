@@ -26,3 +26,29 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 export function getApiBaseUrl() {
   return baseUrl;
 }
+
+// Study/Review helpers (can be replaced with real endpoints quando prontos)
+export async function fetchStudyBatch<T>(deckId: number, limit = 5): Promise<T[]> {
+  const cards = await apiFetch<T[]>(`/decks/${deckId}/cards`);
+  return cards.slice(0, limit);
+}
+
+export async function submitStudyResults(payload: {
+  deck_id: number;
+  results: { card_id: number; correct: boolean }[];
+}) {
+  // placeholder para integração futura
+  console.log("submitStudyResults (stub)", payload);
+  return { ok: true };
+}
+
+export async function fetchDueCards<T>(deckId: number, limit = 20): Promise<T[]> {
+  const cards = await apiFetch<T[]>(`/decks/${deckId}/cards`);
+  return cards.slice(0, limit);
+}
+
+export async function submitReview(cardId: number, result: { correct: boolean }) {
+  // placeholder para integração futura
+  console.log("submitReview (stub)", { cardId, result });
+  return { ok: true };
+}
