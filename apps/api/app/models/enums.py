@@ -20,3 +20,11 @@ class CardStatus(str, enum.Enum):
     learning = "learning"
     review = "review"
     suspended = "suspended"
+
+
+class LearningStage(str, enum.Enum):
+    curto_prazo = "curto_prazo"
+    transicao = "transicao"
+    consolidacao = "consolidacao"
+    longo_prazo = "longo_prazo"
+    memoria_estavel = "memoria_estavel"

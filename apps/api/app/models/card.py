@@ -4,7 +4,7 @@ from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, Text,
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
-from app.models.enums import CardStatus
+from app.models.enums import CardStatus, LearningStage
 
 
 class Card(Base):
@@ -15,6 +15,7 @@ class Card(Base):
     card_template_id = Column(Integer, ForeignKey("card_templates.id"), nullable=False, index=True)
     mnemonic = Column(Text, nullable=True)
     status = Column(Enum(CardStatus), nullable=False, server_default=text("'new'"))
+    stage = Column(Enum(LearningStage), nullable=False, server_default=text("'curto_prazo'"))
     srs_interval = Column(Integer, nullable=False, server_default="0")
     srs_ease = Column(Float, nullable=False, server_default="2.5")
     due_at = Column(DateTime(timezone=True), nullable=True, default=datetime.utcnow)

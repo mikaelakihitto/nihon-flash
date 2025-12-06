@@ -181,6 +181,7 @@ def list_cards(deck_id: int, db: Session = Depends(get_db)):
                 card_template_id=card.card_template_id,
                 mnemonic=card.mnemonic,
                 status=card.status,
+                stage=getattr(card, "stage", None),
                 srs_interval=card.srs_interval,
                 srs_ease=card.srs_ease,
                 due_at=card.due_at,

@@ -2,7 +2,7 @@ from app.models.user import User
 from app.models.deck import Deck
 from app.models.card import Card
 from app.models.note import Note, NoteType, NoteField, CardTemplate, MediaAsset, NoteFieldValue
-from app.models.enums import CardStatus, NoteFieldType, MediaType
+from app.models.enums import CardStatus, NoteFieldType, MediaType, LearningStage
 
 __all__ = [
     "User",
@@ -17,4 +17,5 @@ __all__ = [
     "CardStatus",
     "NoteFieldType",
     "MediaType",
+    "LearningStage",
 ]

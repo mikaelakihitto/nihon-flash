@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.models.enums import CardStatus
+from app.models.enums import CardStatus, LearningStage
 from app.schemas.note import NoteRead
 
 
@@ -11,6 +11,7 @@ class CardBase(BaseModel):
     card_template_id: int
     mnemonic: str | None = None
     status: CardStatus = CardStatus.new
+    stage: LearningStage | None = None
     srs_interval: int = 0
     srs_ease: float = 2.5
     due_at: datetime | None = None

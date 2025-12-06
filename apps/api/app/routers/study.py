@@ -27,6 +27,7 @@ def _render_card(card: Card) -> RenderedCard:
         card_template_id=card.card_template_id,
         mnemonic=card.mnemonic,
         status=card.status,
+        stage=getattr(card, "stage", None),
         srs_interval=card.srs_interval,
         srs_ease=card.srs_ease,
         due_at=card.due_at,
@@ -140,6 +141,7 @@ def review_card(card_id: int, payload: ReviewResult, db: Session = Depends(get_d
     return ReviewResponse(
         card_id=card.id,
         status=card.status.value,
+        stage=card.stage.value if card.stage else None,
         due_at=card.due_at,
         srs_interval=card.srs_interval,
         srs_ease=card.srs_ease,

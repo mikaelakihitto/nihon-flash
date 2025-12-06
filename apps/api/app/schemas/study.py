@@ -25,6 +25,7 @@ class ReviewResult(BaseModel):
 class ReviewResponse(BaseModel):
     card_id: int
     status: str
+    stage: str | None = None
     due_at: datetime | None = None
     srs_interval: int | None = None
     srs_ease: float | None = None
