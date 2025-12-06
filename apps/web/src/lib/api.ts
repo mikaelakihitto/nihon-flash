@@ -1,8 +1,9 @@
-"use client";
-
-import { getToken } from "./auth";
-
 const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("nf_auth_token");
+}
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
@@ -13,8 +14,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {})
     },
-    cache: "no-store",
-    credentials: "include"
+    cache: "no-store"
   });
   if (!res.ok) {
     const text = await res.text();

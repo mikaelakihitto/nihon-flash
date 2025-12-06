@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 
-const TOKEN_KEY = "nf_token";
+const TOKEN_KEY = "nf_auth_token";
 
-export function saveToken(token: string) {
+export function setToken(token: string) {
   if (typeof window === "undefined") return;
   localStorage.setItem(TOKEN_KEY, token);
 }
