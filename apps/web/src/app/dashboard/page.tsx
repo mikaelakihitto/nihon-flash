@@ -75,6 +75,13 @@ export default function DashboardPage() {
           <h1 className="text-xl font-semibold text-slate-900">Pronto para estudar japonês hoje?</h1>
         </div>
         <div className="flex items-center gap-4">
+          <Link
+            href="/decks"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+            aria-label="Ver decks"
+          >
+            Ver decks
+          </Link>
           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
             <p className="font-semibold">🔥 Streak: --</p>
             <p className="text-xs text-slate-500">Cards para hoje: --</p>
@@ -117,10 +124,10 @@ export default function DashboardPage() {
                 Começar revisão agora
               </Link>
               <Link
-                href="/decks"
-                className="w-full rounded-lg border border-slate-300 px-4 py-3 text-center text-slate-800 hover:bg-slate-100"
+                href="/review/hiragana"
+                className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-center text-indigo-700 hover:bg-indigo-100"
               >
-                Ver decks
+                Revisar cards devidos
               </Link>
             </div>
           </div>

@@ -27,28 +27,29 @@ export function getApiBaseUrl() {
   return baseUrl;
 }
 
-// Study/Review helpers (can be replaced with real endpoints quando prontos)
+// Study/Review helpers
 export async function fetchStudyBatch<T>(deckId: number, limit = 5): Promise<T[]> {
-  const cards = await apiFetch<T[]>(`/decks/${deckId}/cards`);
-  return cards.slice(0, limit);
+  const batch = await apiFetch<{ cards: T[] }>(`/decks/${deckId}/study?limit=${limit}`);
+  return batch.cards;
 }
 
 export async function submitStudyResults(payload: {
   deck_id: number;
   results: { card_id: number; correct: boolean }[];
 }) {
-  // placeholder para integração futura
-  console.log("submitStudyResults (stub)", payload);
-  return { ok: true };
+  return apiFetch<{ updated: number }>("/study/submit", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function fetchDueCards<T>(deckId: number, limit = 20): Promise<T[]> {
-  const cards = await apiFetch<T[]>(`/decks/${deckId}/cards`);
-  return cards.slice(0, limit);
+  return apiFetch<T[]>(`/decks/${deckId}/reviews?due_only=true&limit=${limit}`);
 }
 
 export async function submitReview(cardId: number, result: { correct: boolean }) {
-  // placeholder para integração futura
-  console.log("submitReview (stub)", { cardId, result });
-  return { ok: true };
+  return apiFetch(`/cards/${cardId}/review`, {
+    method: "POST",
+    body: JSON.stringify(result)
+  });
 }

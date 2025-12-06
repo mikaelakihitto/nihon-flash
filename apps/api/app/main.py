@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, decks, note_types, notes
+from app.routers import auth, decks, note_types, notes, study
 
 app = FastAPI(title="Nihon Flash API")
 
@@ -26,3 +26,4 @@ app.include_router(auth.router)
 app.include_router(decks.router)
 app.include_router(note_types.router)
 app.include_router(notes.router)
+app.include_router(study.router)
