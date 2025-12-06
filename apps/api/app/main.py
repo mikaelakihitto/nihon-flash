@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.security import get_current_user
 from app.routers import auth, decks, note_types, notes, study
 
 app = FastAPI(title="Nihon Flash API")
@@ -23,7 +24,7 @@ def health():
 
 
 app.include_router(auth.router)
-app.include_router(decks.router)
-app.include_router(note_types.router)
-app.include_router(notes.router)
-app.include_router(study.router)
+app.include_router(decks.router, dependencies=[Depends(get_current_user)])
+app.include_router(note_types.router, dependencies=[Depends(get_current_user)])
+app.include_router(notes.router, dependencies=[Depends(get_current_user)])
+app.include_router(study.router, dependencies=[Depends(get_current_user)])

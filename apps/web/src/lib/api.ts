@@ -17,6 +17,13 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     cache: "no-store"
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("nf_auth_token");
+        window.location.href = "/login";
+      }
+      throw new Error("Não autenticado");
+    }
     const text = await res.text();
     throw new Error(text || `Request failed: ${res.status}`);
   }
