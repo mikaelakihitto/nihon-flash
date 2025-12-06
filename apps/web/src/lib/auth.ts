@@ -1,26 +1,40 @@
 "use client";
 
-const STORAGE_KEY = "nf_mock_auth";
+import { useEffect, useState } from "react";
 
-export function mockLogin() {
+const TOKEN_KEY = "nf_token";
+
+export function saveToken(token: string) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, "true");
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
-export function mockLogout() {
+export function clearToken() {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function isLoggedIn(): boolean {
-  if (typeof window === "undefined") return false;
-  return localStorage.getItem(STORAGE_KEY) === "true";
+  return !!getToken();
 }
 
 export function useAuthGuard(router: { replace: (path: string) => void }) {
-  const ready = typeof window !== "undefined";
-  if (ready && !isLoggedIn()) {
-    router.replace("/login");
-  }
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = getToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+    setReady(true);
+  }, [router]);
+
   return { ready };
 }

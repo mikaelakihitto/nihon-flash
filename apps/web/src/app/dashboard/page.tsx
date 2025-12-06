@@ -2,12 +2,29 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { mockLogout, useAuthGuard } from "../../lib/auth";
+import { useEffect, useState } from "react";
+import { clearToken, useAuthGuard } from "../../lib/auth";
+import { apiFetch } from "../../lib/api";
 import { mockStats } from "../../lib/mockData";
+
+type Deck = { id: number; name: string; description?: string | null };
 
 export default function DashboardPage() {
   const router = useRouter();
   const { ready } = useAuthGuard(router);
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ready) return;
+    apiFetch<Deck[]>("/decks")
+      .then((data) => {
+        setDecks(data);
+        console.log("Decks carregados:", data);
+      })
+      .catch((err) => setError(err?.message || "Erro ao carregar decks"));
+  }, [ready]);
+
   if (!ready) return null;
 
   return (
@@ -16,7 +33,7 @@ export default function DashboardPage() {
         <div className="text-lg font-semibold text-slate-900">Nihon Flash</div>
         <button
           onClick={() => {
-            mockLogout();
+            clearToken();
             router.replace("/login");
           }}
           className="text-sm font-medium text-indigo-600 hover:underline"
@@ -51,6 +68,25 @@ export default function DashboardPage() {
             description="46 caracteres usados para empréstimos e ênfase."
             href="/study/katakana"
           />
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-900">Decks da API (GET /decks)</h3>
+            {error && <span className="text-sm text-red-600">{error}</span>}
+          </div>
+          {decks.length === 0 ? (
+            <p className="text-sm text-slate-600">Nenhum deck retornado.</p>
+          ) : (
+            <ul className="space-y-2 text-sm text-slate-700">
+              {decks.map((deck) => (
+                <li key={deck.id} className="rounded border border-slate-200 px-3 py-2">
+                  <p className="font-medium">{deck.name}</p>
+                  {deck.description && <p className="text-slate-600">{deck.description}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </main>
     </div>

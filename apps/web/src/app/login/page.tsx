@@ -3,19 +3,32 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { mockLogin } from "../../lib/auth";
+import { saveToken } from "../../lib/auth";
+import { apiFetch } from "../../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setError(null);
     setLoading(true);
-    mockLogin();
-    router.replace("/dashboard");
+    try {
+      const resp = await apiFetch<{ access_token: string; token_type: string }>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password })
+      });
+      saveToken(resp.access_token);
+      router.replace("/dashboard");
+    } catch (err: any) {
+      setError(err?.message || "Falha ao autenticar");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -56,6 +69,7 @@ export default function LoginPage() {
             {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         <div className="mt-4 text-center text-sm text-slate-600">
           <Link href="/dashboard" className="text-indigo-600 hover:underline">
             Ir para o dashboard (mock)

@@ -6,7 +6,8 @@ from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# pbkdf2_sha256 é puro Python e estável, evitando problemas de build do bcrypt
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def hash_password(password: str) -> str:

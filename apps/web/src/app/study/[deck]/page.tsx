@@ -5,6 +5,7 @@ import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthGuard } from "../../../lib/auth";
 import { DeckName, StudyCard, getDeck } from "../../../lib/mockData";
+import { apiFetch } from "../../../lib/api";
 
 export default function StudyPage() {
   const router = useRouter();
@@ -25,6 +26,12 @@ export default function StudyPage() {
     setCards(getDeck(deckParam));
     setIndex(0);
     setShowAnswer(false);
+
+    // Exemplo de chamada real para /decks/{id}/cards (ids fictícios 1 e 2)
+    const deckId = deckParam === "hiragana" ? 1 : 2;
+    apiFetch(`/decks/${deckId}/cards`)
+      .then((data) => console.log("Cards recebidos da API:", data))
+      .catch((err) => console.warn("Erro ao buscar cards reais:", err?.message));
   }, [deckParam, ready]);
 
   if (!ready) return null;

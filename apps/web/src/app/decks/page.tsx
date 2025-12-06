@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { apiFetch, getApiBaseUrl } from "../../lib/api";
 
 type Deck = {
@@ -6,8 +9,15 @@ type Deck = {
   description?: string | null;
 };
 
-export default async function DecksPage() {
-  const decks = await apiFetch<Deck[]>("/decks").catch(() => []);
+export default function DecksPage() {
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch<Deck[]>("/decks")
+      .then(setDecks)
+      .catch((err) => setError(err?.message || "Erro ao carregar decks"));
+  }, []);
 
   return (
     <section className="space-y-3">
@@ -15,6 +25,8 @@ export default async function DecksPage() {
         <h2 className="text-2xl font-semibold">Decks</h2>
         <p className="text-slate-700">Consumindo da API: {getApiBaseUrl()}/decks</p>
       </div>
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       {decks.length === 0 ? (
         <p className="text-slate-600">Nenhum deck encontrado.</p>
