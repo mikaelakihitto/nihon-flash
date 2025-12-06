@@ -152,12 +152,12 @@ export const deckMeta: DeckMeta[] = [
   {
     id: 2,
     key: "katakana",
-    name: "Katakana - Básico",
+    name: "Katakana - Básico (Em breve)",
     description: "46 caracteres para palavras estrangeiras e ênfase.",
     totalCards: katakana.length,
-    completedCards: 10,
-    pendingReviews: 18,
-    status: "available"
+    completedCards: 0,
+    pendingReviews: 0,
+    status: "soon"
   },
   {
     id: 3,
