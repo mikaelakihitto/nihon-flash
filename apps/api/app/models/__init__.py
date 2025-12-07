@@ -4,6 +4,7 @@ from app.models.card import Card
 from app.models.note import Note, NoteType, NoteField, CardTemplate, MediaAsset, NoteFieldValue
 from app.models.enums import CardStatus, NoteFieldType, MediaType, LearningStage
 from app.models.user_card_progress import UserCardProgress
+from app.models.card_review_log import CardReviewLog
 
 __all__ = [
     "User",
@@ -16,6 +17,7 @@ __all__ = [
     "MediaAsset",
     "NoteFieldValue",
     "UserCardProgress",
+    "CardReviewLog",
     "CardStatus",
     "NoteFieldType",
     "MediaType",

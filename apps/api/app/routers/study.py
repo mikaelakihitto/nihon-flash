@@ -6,11 +6,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models import Card, CardTemplate, Deck, Note, NoteFieldValue, User, UserCardProgress
+from app.models import Card, CardTemplate, Deck, Note, NoteFieldValue, User, UserCardProgress, CardReviewLog
 from app.models.enums import CardStatus
 from app.schemas.card import RenderedCard
 from app.schemas.note import NoteRead
 from app.schemas.study import ReviewResponse, ReviewResult, ReviewStats, StudyBatch, StudySubmit
+from app.schemas.review_log import ReviewLogRead
 from app.services.notes import build_note_context, render_template
 from app.services.srs import apply_review
 
@@ -136,7 +137,25 @@ def submit_study(
                 lapses=0,
             )
             db.add(progress)
+        before_stage = progress.stage
         apply_review(progress, correct=correct, initial=True)
+        db.add(
+            CardReviewLog(
+                user_id=current_user.id,
+                card_id=card.id,
+                note_id=card.note_id,
+                deck_id=payload.deck_id,
+                correct=correct,
+                stage_before=before_stage,
+                stage_after=progress.stage,
+                status_after=progress.status,
+                due_at_after=progress.due_at,
+                srs_interval_after=progress.srs_interval,
+                srs_ease_after=progress.srs_ease,
+                reps_after=progress.reps,
+                lapses_after=progress.lapses,
+            )
+        )
 
     db.commit()
     return {"updated": len(cards)}
@@ -219,7 +238,25 @@ def review_card(
         )
         db.add(progress)
 
+    before_stage = progress.stage
     apply_review(progress, correct=payload.correct, initial=False)
+    db.add(
+        CardReviewLog(
+            user_id=current_user.id,
+            card_id=card.id,
+            note_id=card.note_id,
+            deck_id=card.note.deck_id if card.note else None,
+            correct=payload.correct,
+            stage_before=before_stage,
+            stage_after=progress.stage,
+            status_after=progress.status,
+            due_at_after=progress.due_at,
+            srs_interval_after=progress.srs_interval,
+            srs_ease_after=progress.srs_ease,
+            reps_after=progress.reps,
+            lapses_after=progress.lapses,
+        )
+    )
     db.commit()
     db.refresh(progress)
     return ReviewResponse(
@@ -274,3 +311,21 @@ def get_review_stats(
     next_due_value = next_due_at[0] if next_due_at else None
 
     return ReviewStats(due_count_today=due_today_count, next_due_at=next_due_value)
+
+
+@router.get("/me/review-log", response_model=list[ReviewLogRead])
+def list_my_review_logs(
+    deck_id: int | None = None,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = (
+        db.query(CardReviewLog)
+        .filter(CardReviewLog.user_id == current_user.id)
+        .order_by(CardReviewLog.created_at.desc())
+    )
+    if deck_id:
+        query = query.filter(CardReviewLog.deck_id == deck_id)
+    logs = query.limit(limit).all()
+    return [ReviewLogRead.model_validate(log, from_attributes=True) for log in logs]
