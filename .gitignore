@@ -23,3 +23,5 @@ __pycache__/
 
 # SQLite local
 *.db
+
+*.mp3
