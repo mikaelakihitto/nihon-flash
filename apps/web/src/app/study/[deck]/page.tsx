@@ -40,6 +40,7 @@ export default function StudyPage() {
   const [phase, setPhase] = useState<"preview" | "quiz" | "finished">("preview");
   const [previewIndex, setPreviewIndex] = useState(0);
   const [queue, setQueue] = useState<number[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [previewVisited, setPreviewVisited] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +97,7 @@ export default function StudyPage() {
   if (!ready) return null;
   if (!deckParam) return null;
 
-  const currentIdx = phase === "quiz" ? queue[0] : previewIndex;
+  const currentIdx = phase === "quiz" ? activeIndex : previewIndex;
   const current = cards[currentIdx];
   const total = cards.length;
   const finished = phase === "finished";
@@ -105,7 +106,9 @@ export default function StudyPage() {
     setCards(cardList);
     setPhase(newPhase);
     setPreviewIndex(0);
-    setQueue(newPhase === "quiz" ? cardList.map((_, i) => i) : []);
+    const initialQueue = newPhase === "quiz" ? cardList.map((_, i) => i) : [];
+    setQueue(initialQueue);
+    setActiveIndex(initialQueue[0] ?? 0);
     setPreviewVisited(cardList.length ? new Set([0]) : new Set());
     setAnswer("");
     setIsCorrect(null);
@@ -124,7 +127,7 @@ export default function StudyPage() {
       setPreviewIndex((prev) => Math.min(prev + 1, cards.length - 1));
       return;
     }
-    // quiz: state already updated in checkAnswer; just reset UI and move to next in queue
+    // Em quiz, apenas limpa UI; avanço real feito em checkAnswer
     setAnswer("");
     setIsCorrect(null);
     setShowDetails(false);
@@ -149,31 +152,39 @@ export default function StudyPage() {
   function checkAnswer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!current || phase !== "quiz") return;
-    if (isCorrect !== null) {
-      nextCard();
+    // Primeiro Enter: validar e mostrar feedback
+    if (isCorrect === null) {
+      const expected = normalize(expectedAnswer(current));
+      const received = normalize(answer);
+      const ok = received === expected;
+      setIsCorrect(ok);
+      setShowDetails(false);
+      setResults((prev) => ({ ...prev, [current.id]: ok }));
       return;
     }
-    const expected = normalize(expectedAnswer(current));
-    const received = normalize(answer);
-    const ok = received === expected;
-    setIsCorrect(ok);
-    setShowDetails(false);
-    setResults((prev) => ({ ...prev, [current.id]: ok }));
-    if (ok) {
-      setQueue((prev) => {
-        const next = prev.slice(1);
-        if (next.length === 0) {
-          setTimeout(() => finishSession(), 150);
-        }
-        return next;
-      });
-    } else {
-      // move current to end of queue to tentar novamente depois
-      setQueue((prev) => {
+    // Segundo Enter: avançar fila conforme resultado já conhecido
+    setQueue((prev) => {
+      if (isCorrect === true) {
         const [, ...rest] = prev;
-        return [...rest, currentIdx];
+        return rest;
+      }
+      const [, ...rest] = prev;
+      return [...rest, currentIdx];
+    });
+    setTimeout(() => {
+      setAnswer("");
+      setIsCorrect(null);
+      setShowDetails(false);
+      setActiveIndex((prevIdx) => {
+        const nextQueue = queue.slice(1);
+        return nextQueue[0] ?? prevIdx;
       });
-    }
+      if (queue.length <= 1 && isCorrect === true) {
+        finishSession();
+      } else if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    }, 0);
   }
 
   function finishSession() {
