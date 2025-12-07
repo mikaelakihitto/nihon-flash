@@ -25,6 +25,7 @@ type RenderedCard = {
     field_values: {
       value_text?: string | null;
       field?: { name: string };
+      media_asset?: { url?: string | null };
     }[];
   };
 };
@@ -48,6 +49,7 @@ export default function StudyPage() {
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [results, setResults] = useState<Record<number, boolean | null>>({});
+  const audioRef = useRef<HTMLAudioElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -94,13 +96,24 @@ export default function StudyPage() {
     });
   }, [previewIndex, phase]);
 
-  if (!ready) return null;
-  if (!deckParam) return null;
-
   const currentIdx = phase === "quiz" ? activeIndex : previewIndex;
   const current = cards[currentIdx];
   const total = cards.length;
   const finished = phase === "finished";
+  const audioUrl =
+    current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.media_asset?.url ||
+    current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.value_text ||
+    "";
+
+  useEffect(() => {
+    if (isCorrect !== null && audioUrl && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {});
+    }
+  }, [isCorrect, audioUrl]);
+
+  if (!ready) return null;
+  if (!deckParam) return null;
 
   function startSession(newPhase: "preview" | "quiz", cardList = cards) {
     setCards(cardList);
@@ -337,6 +350,23 @@ export default function StudyPage() {
                     para avançar.
                   </div>
                 )}
+                {audioUrl && isCorrect !== null && (
+                  <div className="mt-4 flex flex-col items-center gap-2">
+                    <audio ref={audioRef} controls src={audioUrl} className="w-full" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (audioRef.current) {
+                          audioRef.current.currentTime = 0;
+                          audioRef.current.play().catch(() => {});
+                        }
+                      }}
+                      className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                    >
+                      Ouvir novamente
+                    </button>
+                  </div>
+                )}
 
                 <div className="mt-6 flex justify-center gap-3">
                   {isCorrect !== null && (
@@ -358,9 +388,11 @@ export default function StudyPage() {
                 </div>
 
                 {showDetails && isCorrect !== null && (
-                  <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
-                    <p className="font-semibold text-slate-900">Resposta completa:</p>
-                    <div className="mt-2 whitespace-pre-wrap">{current.back}</div>
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm space-y-3">
+                    <div>
+                      <p className="font-semibold text-slate-900">Resposta completa:</p>
+                      <div className="mt-2 whitespace-pre-wrap">{current.back}</div>
+                    </div>
                     {current.mnemonic && (
                       <p className="mt-2 text-slate-600">
                         <span className="font-semibold text-slate-800">Mnemônico:</span> {current.mnemonic}

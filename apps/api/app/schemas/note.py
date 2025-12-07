@@ -3,6 +3,16 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.schemas.note_type import NoteFieldRead
+from app.models.enums import MediaType
+
+
+class MediaAssetRead(BaseModel):
+    id: int
+    file_name: str
+    url: str
+    media_type: MediaType | None = None
+
+    model_config = {"from_attributes": True}
 
 
 class NoteFieldValueBase(BaseModel):
@@ -19,6 +29,7 @@ class NoteFieldValueRead(NoteFieldValueBase):
     id: int
     note_id: int
     field: NoteFieldRead | None = None
+    media_asset: MediaAssetRead | None = None
 
     model_config = {"from_attributes": True}
 
