@@ -106,6 +106,13 @@ export default function StudyPage() {
     "";
 
   useEffect(() => {
+    if (phase === "preview" && audioUrl && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {});
+    }
+  }, [phase, previewIndex, audioUrl]);
+
+  useEffect(() => {
     if (isCorrect !== null && audioUrl && audioRef.current) {
       audioRef.current.currentTime = 0;
       audioRef.current.play().catch(() => {});
@@ -281,6 +288,23 @@ export default function StudyPage() {
             {phase === "preview" ? (
               <>
                 <div className="mt-4 whitespace-pre-wrap text-center text-xl text-slate-700">{current.back}</div>
+                {audioUrl && (
+                  <div className="mt-4 flex flex-col items-center gap-2">
+                    <audio ref={audioRef} controls src={audioUrl} className="w-full" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (audioRef.current) {
+                          audioRef.current.currentTime = 0;
+                          audioRef.current.play().catch(() => {});
+                        }
+                      }}
+                      className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                    >
+                      Ouvir novamente
+                    </button>
+                  </div>
+                )}
                 <div className="mt-6 flex justify-center gap-3">
                   <button
                     onClick={() => setPreviewIndex((prev) => Math.max(prev - 1, 0))}
