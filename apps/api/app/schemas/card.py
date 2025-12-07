@@ -36,6 +36,7 @@ class RenderedCard(BaseModel):
     card_template_id: int
     mnemonic: str | None = None
     status: CardStatus
+    stage: LearningStage | None = None
     srs_interval: int
     srs_ease: float
     due_at: datetime | None = None

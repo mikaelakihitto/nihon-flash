@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 
-from app.models import Card
 from app.models.enums import CardStatus, LearningStage
 
 STAGE_SCHEDULE: list[tuple[LearningStage, timedelta]] = [
@@ -32,10 +31,10 @@ def _stage_to_status(stage: LearningStage) -> CardStatus:
     return CardStatus.learning if stage in {LearningStage.curto_prazo, LearningStage.transicao} else CardStatus.review
 
 
-def apply_review(card: Card, correct: bool, initial: bool = False) -> None:
+def apply_review(obj: object, correct: bool, initial: bool = False) -> None:
     """Atualiza SRS com base em estágios fixos."""
     now = datetime.utcnow()
-    current_stage = card.stage or LearningStage.curto_prazo
+    current_stage = getattr(obj, "stage", None) or LearningStage.curto_prazo
     current_idx = _stage_index(current_stage)
 
     if initial:
@@ -52,12 +51,12 @@ def apply_review(card: Card, correct: bool, initial: bool = False) -> None:
         else:
             target_stage, interval = STAGE_SCHEDULE[0]
 
-    card.stage = target_stage
-    card.status = _stage_to_status(target_stage)
-    card.srs_interval = int(interval.total_seconds() // 60)
-    card.srs_ease = _adjust_ease(card.srs_ease or 2.5, correct)
-    card.due_at = now + interval
-    card.last_reviewed_at = now
-    card.reps = (card.reps or 0) + 1
+    setattr(obj, "stage", target_stage)
+    setattr(obj, "status", _stage_to_status(target_stage))
+    setattr(obj, "srs_interval", int(interval.total_seconds() // 60))
+    setattr(obj, "srs_ease", _adjust_ease(getattr(obj, "srs_ease", None) or 2.5, correct))
+    setattr(obj, "due_at", now + interval)
+    setattr(obj, "last_reviewed_at", now)
+    setattr(obj, "reps", (getattr(obj, "reps", None) or 0) + 1)
     if not correct:
-        card.lapses = (card.lapses or 0) + 1
+        setattr(obj, "lapses", (getattr(obj, "lapses", None) or 0) + 1)

@@ -25,3 +25,4 @@ class Card(Base):
 
     note = relationship("Note", back_populates="cards")
     template = relationship("CardTemplate", back_populates="cards")
+    progresses = relationship("UserCardProgress", back_populates="card", cascade="all, delete-orphan")

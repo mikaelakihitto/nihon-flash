@@ -5,7 +5,8 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
-from app.models import Card, CardTemplate, Deck, Note, NoteFieldValue
+from app.core.security import get_current_user
+from app.models import Card, CardTemplate, Deck, Note, NoteFieldValue, User, UserCardProgress
 from app.models.enums import CardStatus
 from app.schemas.card import RenderedCard
 from app.schemas.note import NoteRead
@@ -16,24 +17,34 @@ from app.services.srs import apply_review
 router = APIRouter(prefix="", tags=["study"])
 
 
-def _render_card(card: Card) -> RenderedCard:
+def _render_card(card: Card, progress: UserCardProgress | None = None) -> RenderedCard:
     context = build_note_context(card.note)
     front = render_template(card.template.front_template, context)
     back = render_template(card.template.back_template, context)
     note_read = NoteRead.model_validate(card.note, from_attributes=True)
+
+    status = progress.status if progress else card.status
+    stage = getattr(progress, "stage", None) if progress else getattr(card, "stage", None)
+    srs_interval = progress.srs_interval if progress else card.srs_interval
+    srs_ease = progress.srs_ease if progress else card.srs_ease
+    due_at = progress.due_at if progress else card.due_at
+    last_reviewed_at = progress.last_reviewed_at if progress else card.last_reviewed_at
+    lapses = progress.lapses if progress else card.lapses
+    reps = progress.reps if progress else card.reps
+
     return RenderedCard(
         id=card.id,
         note_id=card.note_id,
         card_template_id=card.card_template_id,
         mnemonic=card.mnemonic,
-        status=card.status,
-        stage=getattr(card, "stage", None),
-        srs_interval=card.srs_interval,
-        srs_ease=card.srs_ease,
-        due_at=card.due_at,
-        last_reviewed_at=card.last_reviewed_at,
-        lapses=card.lapses,
-        reps=card.reps,
+        status=status,
+        stage=stage,
+        srs_interval=srs_interval,
+        srs_ease=srs_ease,
+        due_at=due_at,
+        last_reviewed_at=last_reviewed_at,
+        lapses=lapses,
+        reps=reps,
         front=front,
         back=back,
         note=note_read,
@@ -42,7 +53,12 @@ def _render_card(card: Card) -> RenderedCard:
 
 
 @router.get("/decks/{deck_id}/study", response_model=StudyBatch)
-def get_study_batch(deck_id: int, limit: int = Query(5, ge=1, le=50), db: Session = Depends(get_db)):
+def get_study_batch(
+    deck_id: int,
+    limit: int = Query(5, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     deck = db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
@@ -50,13 +66,21 @@ def get_study_batch(deck_id: int, limit: int = Query(5, ge=1, le=50), db: Sessio
     cards = (
         db.query(Card)
         .join(Note)
+        .outerjoin(
+            UserCardProgress,
+            and_(UserCardProgress.card_id == Card.id, UserCardProgress.user_id == current_user.id),
+        )
         .options(
             joinedload(Card.template),
             joinedload(Card.note).joinedload(Note.field_values).joinedload(NoteFieldValue.field),
             joinedload(Card.note).joinedload(Note.field_values).joinedload(NoteFieldValue.media_asset),
             joinedload(Card.note).joinedload(Note.note_type),
         )
-        .filter(and_(Note.deck_id == deck_id, Card.status == CardStatus.new))
+        .filter(
+            Note.deck_id == deck_id,
+            Card.status != CardStatus.suspended,
+            UserCardProgress.card_id == None,  # noqa: E711
+        )
         .order_by(Card.id)
         .limit(limit)
         .all()
@@ -66,7 +90,11 @@ def get_study_batch(deck_id: int, limit: int = Query(5, ge=1, le=50), db: Sessio
 
 
 @router.post("/study/submit", status_code=status.HTTP_200_OK)
-def submit_study(payload: StudySubmit, db: Session = Depends(get_db)):
+def submit_study(
+    payload: StudySubmit,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     deck = db.get(Deck, payload.deck_id)
     if not deck:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
@@ -85,10 +113,30 @@ def submit_study(payload: StudySubmit, db: Session = Depends(get_db)):
     if len(cards) != len(set(card_ids)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid card ids for this deck")
 
+    progress_map = {
+        p.card_id: p
+        for p in db.query(UserCardProgress).filter(
+            UserCardProgress.user_id == current_user.id, UserCardProgress.card_id.in_(card_ids)
+        )
+    }
+
     result_map = {r.card_id: r.correct for r in payload.results}
     for card in cards:
         correct = result_map.get(card.id, False)
-        apply_review(card, correct=correct, initial=True)
+        progress = progress_map.get(card.id)
+        if not progress:
+            progress = UserCardProgress(
+                user_id=current_user.id,
+                card_id=card.id,
+                status=CardStatus.new,
+                stage=None,
+                srs_interval=0,
+                srs_ease=card.srs_ease,
+                reps=0,
+                lapses=0,
+            )
+            db.add(progress)
+        apply_review(progress, correct=correct, initial=True)
 
     db.commit()
     return {"updated": len(cards)}
@@ -100,6 +148,7 @@ def get_reviews(
     due_only: bool = Query(True),
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     deck = db.get(Deck, deck_id)
     if not deck:
@@ -107,25 +156,42 @@ def get_reviews(
 
     now = datetime.utcnow()
     query = (
-        db.query(Card)
-        .join(Note)
+        db.query(UserCardProgress)
+        .join(Card, UserCardProgress.card_id == Card.id)
+        .join(Note, Card.note_id == Note.id)
         .options(
-            joinedload(Card.template),
-            joinedload(Card.note).joinedload(Note.field_values).joinedload(NoteFieldValue.field),
-            joinedload(Card.note).joinedload(Note.field_values).joinedload(NoteFieldValue.media_asset),
-            joinedload(Card.note).joinedload(Note.note_type),
+            joinedload(UserCardProgress.card)
+            .joinedload(Card.template),
+            joinedload(UserCardProgress.card)
+            .joinedload(Card.note)
+            .joinedload(Note.field_values)
+            .joinedload(NoteFieldValue.field),
+            joinedload(UserCardProgress.card)
+            .joinedload(Card.note)
+            .joinedload(Note.field_values)
+            .joinedload(NoteFieldValue.media_asset),
+            joinedload(UserCardProgress.card).joinedload(Card.note).joinedload(Note.note_type),
         )
-        .filter(Note.deck_id == deck_id, Card.status != CardStatus.suspended, Card.status != CardStatus.new)
+        .filter(
+            Note.deck_id == deck_id,
+            UserCardProgress.user_id == current_user.id,
+            UserCardProgress.status != CardStatus.suspended,
+        )
     )
     if due_only:
-        query = query.filter(or_(Card.due_at == None, Card.due_at <= now))  # noqa: E711
+        query = query.filter(or_(UserCardProgress.due_at == None, UserCardProgress.due_at <= now))  # noqa: E711
 
-    cards = query.order_by(Card.due_at.nullsfirst(), Card.id).limit(limit).all()
-    return [_render_card(card) for card in cards]
+    progresses = query.order_by(UserCardProgress.due_at.nullsfirst(), Card.id).limit(limit).all()
+    return [_render_card(p.card, p) for p in progresses]
 
 
 @router.post("/cards/{card_id}/review", response_model=ReviewResponse)
-def review_card(card_id: int, payload: ReviewResult, db: Session = Depends(get_db)):
+def review_card(
+    card_id: int,
+    payload: ReviewResult,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     card = (
         db.query(Card)
         .options(joinedload(Card.note))
@@ -135,23 +201,45 @@ def review_card(card_id: int, payload: ReviewResult, db: Session = Depends(get_d
     if not card:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
 
-    apply_review(card, correct=payload.correct, initial=False)
+    progress = (
+        db.query(UserCardProgress)
+        .filter(UserCardProgress.card_id == card_id, UserCardProgress.user_id == current_user.id)
+        .first()
+    )
+    if not progress:
+        progress = UserCardProgress(
+            user_id=current_user.id,
+            card_id=card.id,
+            status=CardStatus.new,
+            stage=None,
+            srs_interval=card.srs_interval,
+            srs_ease=card.srs_ease,
+            reps=0,
+            lapses=0,
+        )
+        db.add(progress)
+
+    apply_review(progress, correct=payload.correct, initial=False)
     db.commit()
-    db.refresh(card)
+    db.refresh(progress)
     return ReviewResponse(
         card_id=card.id,
-        status=card.status.value,
-        stage=card.stage.value if card.stage else None,
-        due_at=card.due_at,
-        srs_interval=card.srs_interval,
-        srs_ease=card.srs_ease,
-        reps=card.reps,
-        lapses=card.lapses,
+        status=progress.status.value if progress.status else None,
+        stage=progress.stage.value if progress.stage else None,
+        due_at=progress.due_at,
+        srs_interval=progress.srs_interval,
+        srs_ease=progress.srs_ease,
+        reps=progress.reps,
+        lapses=progress.lapses,
     )
 
 
 @router.get("/decks/{deck_id}/review-stats", response_model=ReviewStats)
-def get_review_stats(deck_id: int, db: Session = Depends(get_db)):
+def get_review_stats(
+    deck_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     deck = db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
@@ -160,26 +248,27 @@ def get_review_stats(deck_id: int, db: Session = Depends(get_db)):
     end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     base_query = (
-        db.query(Card)
-        .join(Note)
+        db.query(UserCardProgress)
+        .join(Card, UserCardProgress.card_id == Card.id)
+        .join(Note, Card.note_id == Note.id)
         .filter(
             Note.deck_id == deck_id,
-            Card.status != CardStatus.suspended,
-            Card.status != CardStatus.new,
+            UserCardProgress.user_id == current_user.id,
+            UserCardProgress.status != CardStatus.suspended,
         )
     )
 
     due_today_count = (
-        base_query.filter(Card.due_at != None, Card.due_at <= end_of_day)  # noqa: E711
+        base_query.filter(UserCardProgress.due_at != None, UserCardProgress.due_at <= end_of_day)  # noqa: E711
         .with_entities(func.count())
         .scalar()
         or 0
     )
 
     next_due_at = (
-        base_query.filter(Card.due_at != None)  # noqa: E711
-        .order_by(Card.due_at)
-        .with_entities(Card.due_at)
+        base_query.filter(UserCardProgress.due_at != None)  # noqa: E711
+        .order_by(UserCardProgress.due_at)
+        .with_entities(UserCardProgress.due_at)
         .first()
     )
     next_due_value = next_due_at[0] if next_due_at else None

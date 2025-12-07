@@ -16,3 +16,4 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), default=datetime.utcnow)
 
     decks = relationship("Deck", back_populates="owner", cascade="all, delete-orphan")
+    card_progress = relationship("UserCardProgress", back_populates="user", cascade="all, delete-orphan")

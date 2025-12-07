@@ -7,7 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
-from app.models import Card, Deck, Note, NoteFieldValue, NoteType
+from app.core.security import get_current_user
+from app.models import Card, Deck, Note, NoteFieldValue, NoteType, User, UserCardProgress
 from app.models.enums import CardStatus, LearningStage
 from app.schemas.card import RenderedCard
 from app.schemas.deck import DeckCreate, DeckRead, DeckUpdate
@@ -154,7 +155,7 @@ def update_deck(deck_id: int, deck_in: DeckUpdate, db: Session = Depends(get_db)
 
 
 @router.get("/{deck_id}/cards", response_model=list[RenderedCard])
-def list_cards(deck_id: int, db: Session = Depends(get_db)):
+def list_cards(deck_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     deck = db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
@@ -172,26 +173,35 @@ def list_cards(deck_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+    progress_map = {
+        p.card_id: p
+        for p in db.query(UserCardProgress).filter(
+            UserCardProgress.user_id == current_user.id,
+            UserCardProgress.card_id.in_([c.id for c in cards]),
+        )
+    }
+
     rendered: list[RenderedCard] = []
     for card in cards:
         context = build_note_context(card.note)
         front = render_template(card.template.front_template, context)
         back = render_template(card.template.back_template, context)
         note_read = NoteRead.model_validate(card.note, from_attributes=True)
+        progress = progress_map.get(card.id)
         rendered.append(
             RenderedCard(
                 id=card.id,
                 note_id=card.note_id,
                 card_template_id=card.card_template_id,
                 mnemonic=card.mnemonic,
-                status=card.status,
-                stage=getattr(card, "stage", None),
-                srs_interval=card.srs_interval,
-                srs_ease=card.srs_ease,
-                due_at=card.due_at,
-                last_reviewed_at=card.last_reviewed_at,
-                lapses=card.lapses,
-                reps=card.reps,
+                status=progress.status if progress else card.status,
+                stage=progress.stage if progress else getattr(card, "stage", None),
+                srs_interval=progress.srs_interval if progress else card.srs_interval,
+                srs_ease=progress.srs_ease if progress else card.srs_ease,
+                due_at=progress.due_at if progress else card.due_at,
+                last_reviewed_at=progress.last_reviewed_at if progress else card.last_reviewed_at,
+                lapses=progress.lapses if progress else card.lapses,
+                reps=progress.reps if progress else card.reps,
                 front=front,
                 back=back,
                 note=note_read,
@@ -203,7 +213,7 @@ def list_cards(deck_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{deck_id}/stats", response_model=DeckStats)
-def deck_stats(deck_id: int, db: Session = Depends(get_db)):
+def deck_stats(deck_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     deck = db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
@@ -214,22 +224,33 @@ def deck_stats(deck_id: int, db: Session = Depends(get_db)):
     cards_query = db.query(Card).join(Note).filter(Note.deck_id == deck_id)
     total_cards = cards_query.count()
 
+    progress_query = (
+        db.query(UserCardProgress)
+        .join(Card, UserCardProgress.card_id == Card.id)
+        .join(Note, Card.note_id == Note.id)
+        .filter(UserCardProgress.user_id == current_user.id, Note.deck_id == deck_id)
+    )
+
     due_today = (
-        cards_query.filter(Card.status != CardStatus.new, Card.status != CardStatus.suspended, Card.due_at != None, Card.due_at <= end_of_day)  # noqa: E711
+        progress_query.filter(
+            UserCardProgress.status != CardStatus.suspended,
+            UserCardProgress.due_at != None,  # noqa: E711
+            UserCardProgress.due_at <= end_of_day,
+        )
         .with_entities(func.count())
         .scalar()
         or 0
     )
 
     next_due = (
-        cards_query.filter(Card.due_at != None)  # noqa: E711
-        .order_by(Card.due_at)
-        .with_entities(Card.due_at)
+        progress_query.filter(UserCardProgress.due_at != None)  # noqa: E711
+        .order_by(UserCardProgress.due_at)
+        .with_entities(UserCardProgress.due_at)
         .first()
     )
     next_due_at = next_due[0] if next_due else None
 
-    totals = cards_query.with_entities(func.sum(Card.reps), func.sum(Card.lapses)).first()
+    totals = progress_query.with_entities(func.sum(UserCardProgress.reps), func.sum(UserCardProgress.lapses)).first()
     sum_reps = totals[0] or 0
     sum_lapses = totals[1] or 0
     avg_reps = float(sum_reps) / total_cards if total_cards else None
@@ -238,8 +259,8 @@ def deck_stats(deck_id: int, db: Session = Depends(get_db)):
         accuracy_estimate = max(0.0, (sum_reps - sum_lapses) / sum_reps)
 
     stage_counts = (
-        cards_query.with_entities(Card.stage, func.count())
-        .group_by(Card.stage)
+        progress_query.with_entities(UserCardProgress.stage, func.count())
+        .group_by(UserCardProgress.stage)
         .all()
     )
     stage_distribution = {stage.value if stage else "unknown": count for stage, count in stage_counts}
@@ -256,7 +277,7 @@ def deck_stats(deck_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{deck_id}/cards-with-stats", response_model=list[CardWithStats])
-def deck_cards_with_stats(deck_id: int, db: Session = Depends(get_db)):
+def deck_cards_with_stats(deck_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     deck = db.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
@@ -270,23 +291,32 @@ def deck_cards_with_stats(deck_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+    progress_map = {
+        p.card_id: p
+        for p in db.query(UserCardProgress).filter(
+            UserCardProgress.user_id == current_user.id,
+            UserCardProgress.card_id.in_([c.id for c in cards]),
+        )
+    }
+
     result: list[CardWithStats] = []
     for card in cards:
         context = build_note_context(card.note)
         front = render_template(card.template.front_template, context)
         preview = front if len(front) <= 80 else front[:77] + "..."
+        progress = progress_map.get(card.id)
         result.append(
             CardWithStats(
                 id=card.id,
                 front=preview,
-                status=card.status.value if card.status else "unknown",
-                stage=card.stage.value if getattr(card, "stage", None) else None,
-                due_at=card.due_at,
-                reps=card.reps,
-                lapses=card.lapses,
-                srs_interval=card.srs_interval,
-                srs_ease=card.srs_ease,
-                last_reviewed_at=card.last_reviewed_at,
+                status=(progress.status.value if progress and progress.status else card.status.value if card.status else "unknown"),
+                stage=progress.stage.value if progress and progress.stage else getattr(card, "stage", None) and card.stage.value,
+                due_at=progress.due_at if progress else card.due_at,
+                reps=progress.reps if progress else card.reps,
+                lapses=progress.lapses if progress else card.lapses,
+                srs_interval=progress.srs_interval if progress else card.srs_interval,
+                srs_ease=progress.srs_ease if progress else card.srs_ease,
+                last_reviewed_at=progress.last_reviewed_at if progress else card.last_reviewed_at,
             )
         )
     return result
