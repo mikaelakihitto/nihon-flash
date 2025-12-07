@@ -186,13 +186,13 @@ export default function DashboardPage() {
             </div>
             <div className="flex flex-col gap-3 md:w-64">
               <Link
-                href="/study/hiragana"
+                href="/study/hiragana-basico"
                 className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-center text-white shadow hover:bg-indigo-700"
               >
                 Começar Estudar agora
               </Link>
               <Link
-                href="/review/hiragana"
+                href="/review/hiragana-basico"
                 className="w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-center text-indigo-700 hover:bg-indigo-100"
               >
                 Revisar cards devidos

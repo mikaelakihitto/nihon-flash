@@ -62,7 +62,7 @@ export default function ReviewPage() {
     setError(null);
     try {
       const decks = await apiFetch<Deck[]>("/decks");
-      const found = decks.find((d) => d.slug === deckParam || d.slug === `${deckParam}-basico`);
+      const found = decks.find((d) => d.slug === deckParam);
       if (!found) {
         notFound();
         return;
