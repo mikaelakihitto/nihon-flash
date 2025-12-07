@@ -224,6 +224,22 @@ def deck_stats(deck_id: int, db: Session = Depends(get_db), current_user: User =
     cards_query = db.query(Card).join(Note).filter(Note.deck_id == deck_id)
     total_cards = cards_query.count()
 
+    # cards sem progresso para este usuário = novos disponíveis
+    new_available = (
+        db.query(Card)
+        .join(Note)
+        .outerjoin(
+            UserCardProgress,
+            and_(UserCardProgress.card_id == Card.id, UserCardProgress.user_id == current_user.id),
+        )
+        .filter(
+            Note.deck_id == deck_id,
+            UserCardProgress.card_id == None,  # noqa: E711
+            Card.status == CardStatus.new,
+        )
+        .count()
+    )
+
     progress_query = (
         db.query(UserCardProgress)
         .join(Card, UserCardProgress.card_id == Card.id)
@@ -273,6 +289,7 @@ def deck_stats(deck_id: int, db: Session = Depends(get_db), current_user: User =
         total_lapses=sum_lapses,
         accuracy_estimate=accuracy_estimate,
         stage_distribution=stage_distribution,
+        new_available=new_available,
     )
 
 

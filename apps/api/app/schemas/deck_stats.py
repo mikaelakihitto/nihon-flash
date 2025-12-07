@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class DeckStats(BaseModel):
     total_cards: int
     due_today: int
+    new_available: int | None = None
     next_due_at: datetime | None = None
     avg_reps: float | None = None
     total_lapses: int | None = None

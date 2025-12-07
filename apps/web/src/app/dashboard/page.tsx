@@ -28,6 +28,7 @@ type DeckStats = {
 type DeckFullStats = {
   total_cards: number;
   due_today: number;
+  new_available?: number | null;
   next_due_at: string | null;
   avg_reps: number | null;
   total_lapses: number | null;
@@ -119,13 +120,17 @@ export default function DashboardPage() {
   }, [decks]);
 
   const summary = (() => {
-    const dueTotal = decks.reduce((acc, deck) => acc + (reviewStats[deck.id]?.due_count_today || 0), 0);
+    const dueTotal = decks.reduce(
+      (acc, deck) => acc + (reviewStats[deck.id]?.due_count_today ?? fullStats[deck.id]?.due_today ?? 0),
+      0
+    );
+    const newTotal = decks.reduce((acc, deck) => acc + (fullStats[deck.id]?.new_available || 0), 0);
     const nextDates = decks
       .map((deck) => reviewStats[deck.id]?.next_due_at || fullStats[deck.id]?.next_due_at)
       .filter(Boolean)
       .map((d) => new Date(d as string).getTime());
     const nextDue = nextDates.length ? new Date(Math.min(...nextDates)) : null;
-    return { dueTotal, nextDue, activeDecks: decks.length };
+    return { dueTotal, newTotal, nextDue, activeDecks: decks.length };
   })();
 
   if (!ready) return null;
@@ -170,26 +175,33 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="space-y-2">
               <p className="text-sm uppercase tracking-[0.2em] text-indigo-600">Próxima ação</p>
-              <h2 className="text-3xl font-semibold text-slate-900">
-                Você tem {summary.dueTotal || "—"} cards para revisar hoje
-              </h2>
-              <p className="text-slate-600">
-                {summary.nextDue
-                  ? `Próxima revisão: ${summary.nextDue.toLocaleString("pt-BR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      day: "2-digit",
-                      month: "2-digit"
-                    })}`
-                  : "Nenhuma revisão agendada agora."}
-              </p>
+              <div className="space-y-1">
+                <h2 className="text-3xl font-semibold text-slate-900">
+                  Estudar: {summary.newTotal > 0 ? `${summary.newTotal} novos` : "Sem novos para estudar"}
+                </h2>
+                <h3 className="text-xl font-semibold text-slate-900">
+                  Revisar: {summary.dueTotal > 0 ? `${summary.dueTotal} devidos hoje` : "Nada a revisar agora"}
+                </h3>
+                <p className="text-slate-600">
+                  {summary.dueTotal === 0
+                    ? summary.nextDue
+                      ? `Próxima revisão em ${summary.nextDue.toLocaleString("pt-BR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          day: "2-digit",
+                          month: "2-digit"
+                        })}`
+                      : "Nenhuma revisão agendada."
+                    : "Comece pelas revisões para consolidar o que já viu."}
+                </p>
+              </div>
             </div>
             <div className="flex flex-col gap-3 md:w-64">
               <Link
                 href="/study/hiragana-basico"
                 className="w-full rounded-lg bg-indigo-600 px-4 py-3 text-center text-white shadow hover:bg-indigo-700"
               >
-                Começar Estudar agora
+                Estudar agora
               </Link>
               <Link
                 href="/review/hiragana-basico"
@@ -271,7 +283,7 @@ function DeckCard({
   stats?: DeckStats;
   full?: DeckFullStats;
 }) {
-  const dueText = stats ? stats.due_count_today : "--";
+  const dueCount = stats?.due_count_today ?? full?.due_today ?? 0;
   const nextDue =
     stats && stats.next_due_at
       ? new Date(stats.next_due_at).toLocaleString("pt-BR", {
@@ -280,8 +292,16 @@ function DeckCard({
           day: "2-digit",
           month: "2-digit"
         })
+      : full?.next_due_at
+      ? new Date(full.next_due_at).toLocaleString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          day: "2-digit",
+          month: "2-digit"
+        })
       : "—";
   const total = full?.total_cards ?? "--";
+  const newAvailable = full?.new_available ?? 0;
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-center justify-between gap-2">
@@ -297,7 +317,8 @@ function DeckCard({
       <div className="mt-4 text-sm text-slate-600 space-y-1">
         <div>Modelos de nota: {noteTypes}</div>
         <div>Total: {total}</div>
-        <div>Devidos hoje: {dueText}</div>
+        <div>Novos disponíveis: {newAvailable > 0 ? newAvailable : "—"}</div>
+        <div>Devidos hoje: {dueCount}</div>
         <div>Próxima revisão: {nextDue}</div>
       </div>
       {available && href ? (
