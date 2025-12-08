@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, and_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
