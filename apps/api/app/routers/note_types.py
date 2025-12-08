@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.database import get_db
-from app.models import Card, CardTemplate, Deck, Note, NoteField, NoteFieldValue, NoteType
+from app.core.security import get_current_user
+from app.models import Card, CardTemplate, Deck, Note, NoteField, NoteFieldValue, NoteType, User
 from app.schemas.note_type import (
     CardTemplateCreate,
     CardTemplateRead,
@@ -19,10 +20,40 @@ from app.schemas.note_type import (
 router = APIRouter(prefix="/note-types", tags=["note-types"])
 
 
+def _ensure_deck_owner(deck: Deck | None, user: User) -> Deck:
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    if deck.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this deck")
+    return deck
+
+
+def _ensure_note_type_read_access(note_type: NoteType | None, user: User) -> NoteType:
+    if not note_type:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note type not found")
+    if note_type.deck and (not note_type.deck.is_public) and note_type.deck.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this deck")
+    return note_type
+
+
+def _ensure_note_type_edit_access(note_type: NoteType | None, user: User) -> NoteType:
+    if not note_type:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note type not found")
+    if note_type.deck and note_type.deck.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this deck")
+    return note_type
+
+
 @router.get("", response_model=list[NoteTypeRead])
-def list_note_types(db: Session = Depends(get_db)):
+def list_note_types(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     note_types = (
         db.query(NoteType)
+        .outerjoin(Deck, NoteType.deck_id == Deck.id)
+        .filter(
+            (NoteType.deck_id == None)  # noqa: E711
+            | (Deck.is_public == True)  # noqa: E712
+            | (Deck.owner_id == current_user.id)
+        )
         .options(selectinload(NoteType.fields), selectinload(NoteType.templates))
         .all()
     )
@@ -30,24 +61,20 @@ def list_note_types(db: Session = Depends(get_db)):
 
 
 @router.get("/{note_type_id}", response_model=NoteTypeRead)
-def get_note_type(note_type_id: int, db: Session = Depends(get_db)):
+def get_note_type(note_type_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     note_type = (
         db.query(NoteType)
-        .options(selectinload(NoteType.fields), selectinload(NoteType.templates))
+        .options(selectinload(NoteType.fields), selectinload(NoteType.templates), joinedload(NoteType.deck))
         .filter(NoteType.id == note_type_id)
         .first()
     )
-    if not note_type:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note type not found")
-    return note_type
+    return _ensure_note_type_read_access(note_type, current_user)
 
 
 @router.post("", response_model=NoteTypeRead, status_code=status.HTTP_201_CREATED)
-def create_note_type(payload: NoteTypeCreate, db: Session = Depends(get_db)):
+def create_note_type(payload: NoteTypeCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if payload.deck_id is not None:
-        deck = db.get(Deck, payload.deck_id)
-        if not deck:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+        deck = _ensure_deck_owner(db.get(Deck, payload.deck_id), current_user)
 
     note_type = NoteType(name=payload.name, description=payload.description, deck_id=payload.deck_id)
     db.add(note_type)
@@ -57,15 +84,14 @@ def create_note_type(payload: NoteTypeCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{note_type_id}", response_model=NoteTypeRead)
-def update_note_type(note_type_id: int, payload: NoteTypeUpdate, db: Session = Depends(get_db)):
-    note_type = db.get(NoteType, note_type_id)
-    if not note_type:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note type not found")
+def update_note_type(note_type_id: int, payload: NoteTypeUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    note_type = _ensure_note_type_edit_access(
+        db.query(NoteType).options(joinedload(NoteType.deck)).filter(NoteType.id == note_type_id).first(),
+        current_user,
+    )
 
     if payload.deck_id is not None:
-        deck = db.get(Deck, payload.deck_id)
-        if not deck:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+        deck = _ensure_deck_owner(db.get(Deck, payload.deck_id), current_user)
 
     for field_name in ["name", "description", "deck_id"]:
         value = getattr(payload, field_name)
@@ -78,10 +104,11 @@ def update_note_type(note_type_id: int, payload: NoteTypeUpdate, db: Session = D
 
 
 @router.delete("/{note_type_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_note_type(note_type_id: int, db: Session = Depends(get_db)):
-    note_type = db.get(NoteType, note_type_id)
-    if not note_type:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note type not found")
+def delete_note_type(note_type_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    note_type = _ensure_note_type_edit_access(
+        db.query(NoteType).options(joinedload(NoteType.deck)).filter(NoteType.id == note_type_id).first(),
+        current_user,
+    )
 
     notes_count = db.scalar(select(func.count()).select_from(Note).where(Note.note_type_id == note_type_id))
     if notes_count and notes_count > 0:
@@ -96,10 +123,11 @@ def delete_note_type(note_type_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{note_type_id}/fields", response_model=NoteFieldRead, status_code=status.HTTP_201_CREATED)
-def create_field(note_type_id: int, payload: NoteFieldCreate, db: Session = Depends(get_db)):
-    note_type = db.get(NoteType, note_type_id)
-    if not note_type:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note type not found")
+def create_field(note_type_id: int, payload: NoteFieldCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    note_type = _ensure_note_type_edit_access(
+        db.query(NoteType).options(joinedload(NoteType.deck), joinedload(NoteType.fields)).filter(NoteType.id == note_type_id).first(),
+        current_user,
+    )
 
     sort_order = payload.sort_order
     if sort_order is None:
@@ -122,10 +150,16 @@ def create_field(note_type_id: int, payload: NoteFieldCreate, db: Session = Depe
 
 
 @router.put("/note-fields/{field_id}", response_model=NoteFieldRead)
-def update_field(field_id: int, payload: NoteFieldUpdate, db: Session = Depends(get_db)):
-    field = db.get(NoteField, field_id)
+def update_field(field_id: int, payload: NoteFieldUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    field = (
+        db.query(NoteField)
+        .options(joinedload(NoteField.note_type).joinedload(NoteType.deck))
+        .filter(NoteField.id == field_id)
+        .first()
+    )
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
+    _ensure_note_type_edit_access(field.note_type, current_user)
 
     for attr in ["name", "label", "field_type", "is_required", "sort_order", "hint"]:
         value = getattr(payload, attr)
@@ -140,10 +174,16 @@ def update_field(field_id: int, payload: NoteFieldUpdate, db: Session = Depends(
 
 
 @router.delete("/note-fields/{field_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_field(field_id: int, db: Session = Depends(get_db)):
-    field = db.get(NoteField, field_id)
+def delete_field(field_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    field = (
+        db.query(NoteField)
+        .options(joinedload(NoteField.note_type).joinedload(NoteType.deck))
+        .filter(NoteField.id == field_id)
+        .first()
+    )
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
+    _ensure_note_type_edit_access(field.note_type, current_user)
 
     values_count = db.scalar(
         select(func.count()).select_from(NoteFieldValue).where(NoteFieldValue.field_id == field_id)
@@ -160,10 +200,11 @@ def delete_field(field_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{note_type_id}/templates", response_model=CardTemplateRead, status_code=status.HTTP_201_CREATED)
-def create_template(note_type_id: int, payload: CardTemplateCreate, db: Session = Depends(get_db)):
-    note_type = db.get(NoteType, note_type_id)
-    if not note_type:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note type not found")
+def create_template(note_type_id: int, payload: CardTemplateCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    note_type = _ensure_note_type_edit_access(
+        db.query(NoteType).options(joinedload(NoteType.deck)).filter(NoteType.id == note_type_id).first(),
+        current_user,
+    )
 
     template = CardTemplate(
         note_type_id=note_type_id,
@@ -180,10 +221,16 @@ def create_template(note_type_id: int, payload: CardTemplateCreate, db: Session 
 
 
 @router.put("/card-templates/{template_id}", response_model=CardTemplateRead)
-def update_template(template_id: int, payload: CardTemplateUpdate, db: Session = Depends(get_db)):
-    template = db.get(CardTemplate, template_id)
+def update_template(template_id: int, payload: CardTemplateUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    template = (
+        db.query(CardTemplate)
+        .options(joinedload(CardTemplate.note_type).joinedload(NoteType.deck))
+        .filter(CardTemplate.id == template_id)
+        .first()
+    )
     if not template:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    _ensure_note_type_edit_access(template.note_type, current_user)
 
     for attr in ["name", "front_template", "back_template", "css", "is_active"]:
         value = getattr(payload, attr)
@@ -196,10 +243,16 @@ def update_template(template_id: int, payload: CardTemplateUpdate, db: Session =
 
 
 @router.delete("/card-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_template(template_id: int, db: Session = Depends(get_db)):
-    template = db.get(CardTemplate, template_id)
+def delete_template(template_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    template = (
+        db.query(CardTemplate)
+        .options(joinedload(CardTemplate.note_type).joinedload(NoteType.deck))
+        .filter(CardTemplate.id == template_id)
+        .first()
+    )
     if not template:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
+    _ensure_note_type_edit_access(template.note_type, current_user)
 
     cards_count = db.scalar(select(func.count()).select_from(Card).where(Card.card_template_id == template_id))
     if cards_count and cards_count > 0:

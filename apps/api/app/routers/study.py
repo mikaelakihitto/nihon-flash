@@ -18,6 +18,14 @@ from app.services.srs import apply_review
 router = APIRouter(prefix="", tags=["study"])
 
 
+def _ensure_deck_access(deck: Deck | None, user: User) -> Deck:
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    if not deck.is_public and deck.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this deck")
+    return deck
+
+
 def _render_card(card: Card, progress: UserCardProgress | None = None) -> RenderedCard:
     context = build_note_context(card.note)
     front = render_template(card.template.front_template, context)
@@ -60,9 +68,7 @@ def get_study_batch(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deck = db.get(Deck, deck_id)
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    deck = _ensure_deck_access(db.get(Deck, deck_id), current_user)
 
     cards = (
         db.query(Card)
@@ -96,9 +102,7 @@ def submit_study(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deck = db.get(Deck, payload.deck_id)
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    deck = _ensure_deck_access(db.get(Deck, payload.deck_id), current_user)
 
     card_ids = [r.card_id for r in payload.results]
     if not card_ids:
@@ -169,9 +173,7 @@ def get_reviews(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deck = db.get(Deck, deck_id)
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    deck = _ensure_deck_access(db.get(Deck, deck_id), current_user)
 
     now = datetime.utcnow()
     query = (
@@ -213,12 +215,13 @@ def review_card(
 ):
     card = (
         db.query(Card)
-        .options(joinedload(Card.note))
+        .options(joinedload(Card.note).joinedload(Note.deck))
         .filter(Card.id == card_id)
         .first()
     )
     if not card:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    _ensure_deck_access(card.note.deck if card.note else None, current_user)
 
     progress = (
         db.query(UserCardProgress)
@@ -277,9 +280,7 @@ def get_review_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    deck = db.get(Deck, deck_id)
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    deck = _ensure_deck_access(db.get(Deck, deck_id), current_user)
 
     now = datetime.utcnow()
     end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -326,6 +327,7 @@ def list_my_review_logs(
         .order_by(CardReviewLog.created_at.desc())
     )
     if deck_id:
+        _ensure_deck_access(db.get(Deck, deck_id), current_user)
         query = query.filter(CardReviewLog.deck_id == deck_id)
     logs = query.limit(limit).all()
     return [ReviewLogRead.model_validate(log, from_attributes=True) for log in logs]

@@ -27,6 +27,22 @@ def _slugify(value: str) -> str:
     return value or "deck"
 
 
+def _ensure_can_read_deck(deck: Deck | None, user: User) -> Deck:
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    if not deck.is_public and deck.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this deck")
+    return deck
+
+
+def _ensure_can_edit_deck(deck: Deck | None, user: User) -> Deck:
+    if not deck:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    if deck.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this deck")
+    return deck
+
+
 def _build_deck_response(deck: Deck) -> DeckRead:
     summaries = [
         NoteTypeSummary(
@@ -56,9 +72,10 @@ def _build_deck_response(deck: Deck) -> DeckRead:
 
 
 @router.get("", response_model=list[DeckRead])
-def list_decks(db: Session = Depends(get_db)):
+def list_decks(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     decks = (
         db.query(Deck)
+        .filter((Deck.is_public == True) | (Deck.owner_id == current_user.id))  # noqa: E712
         .options(
             selectinload(Deck.note_types).selectinload(NoteType.templates),
             selectinload(Deck.note_types).selectinload(NoteType.fields),
@@ -69,7 +86,7 @@ def list_decks(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=DeckRead, status_code=status.HTTP_201_CREATED)
-def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db)):
+def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     slug = deck_in.slug or _slugify(deck_in.name)
     exists = db.scalar(select(Deck.id).where(Deck.slug == slug))
     if exists:
@@ -86,7 +103,7 @@ def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db)):
         target_lang=deck_in.target_lang,
         is_public=deck_in.is_public,
         tags=deck_in.tags or [],
-        owner_id=deck_in.owner_id,
+        owner_id=current_user.id,
     )
     db.add(deck)
     db.commit()
@@ -95,7 +112,7 @@ def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{deck_id}", response_model=DeckRead)
-def get_deck(deck_id: int, db: Session = Depends(get_db)):
+def get_deck(deck_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     deck = (
         db.query(Deck)
         .options(
@@ -105,16 +122,13 @@ def get_deck(deck_id: int, db: Session = Depends(get_db)):
         .filter(Deck.id == deck_id)
         .first()
     )
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    deck = _ensure_can_read_deck(deck, current_user)
     return _build_deck_response(deck)
 
 
 @router.put("/{deck_id}", response_model=DeckRead)
-def update_deck(deck_id: int, deck_in: DeckUpdate, db: Session = Depends(get_db)):
-    deck = db.get(Deck, deck_id)
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+def update_deck(deck_id: int, deck_in: DeckUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    deck = _ensure_can_edit_deck(db.get(Deck, deck_id), current_user)
 
     if deck_in.slug is not None:
         slug = deck_in.slug or _slugify(deck_in.name or deck.name)
@@ -156,9 +170,7 @@ def update_deck(deck_id: int, deck_in: DeckUpdate, db: Session = Depends(get_db)
 
 @router.get("/{deck_id}/cards", response_model=list[RenderedCard])
 def list_cards(deck_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    deck = db.get(Deck, deck_id)
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    deck = _ensure_can_read_deck(db.get(Deck, deck_id), current_user)
 
     cards = (
         db.query(Card)
@@ -214,9 +226,7 @@ def list_cards(deck_id: int, db: Session = Depends(get_db), current_user: User =
 
 @router.get("/{deck_id}/stats", response_model=DeckStats)
 def deck_stats(deck_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    deck = db.get(Deck, deck_id)
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    deck = _ensure_can_read_deck(db.get(Deck, deck_id), current_user)
 
     now = datetime.utcnow()
     end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -295,9 +305,7 @@ def deck_stats(deck_id: int, db: Session = Depends(get_db), current_user: User =
 
 @router.get("/{deck_id}/cards-with-stats", response_model=list[CardWithStats])
 def deck_cards_with_stats(deck_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    deck = db.get(Deck, deck_id)
-    if not deck:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found")
+    deck = _ensure_can_read_deck(db.get(Deck, deck_id), current_user)
 
     cards = (
         db.query(Card)
