@@ -7,13 +7,20 @@ Execute a partir da raiz do repo:
 """
 
 from typing import Dict
+from pathlib import Path
+import sys
 
 from sqlalchemy import select
 
-from app.core.database import SessionLocal
-from app.models import MediaAsset, Note, NoteFieldValue
-from app.models.enums import MediaType
-from utils.common import (
+# Garantir que o pacote app esteja no path
+API_ROOT = Path(__file__).resolve().parents[1]
+if str(API_ROOT) not in sys.path:
+    sys.path.append(str(API_ROOT))
+
+from app.core.database import SessionLocal  # noqa: E402
+from app.models import MediaAsset, Note, NoteFieldValue  # noqa: E402
+from app.models.enums import MediaType  # noqa: E402
+from utils.common import (  # noqa: E402
     HIRAGANA_PAIRS,
     get_deck_by_slug,
     get_field,

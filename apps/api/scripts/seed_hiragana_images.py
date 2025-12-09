@@ -7,12 +7,18 @@ URL pública padrão: MEDIA_BASE_URL/media/hiragana/<arquivo>.png
 
 from pathlib import Path
 from typing import Dict
+import sys
 
 from sqlalchemy import select
 
-from app.core.database import SessionLocal
-from app.models import CardTemplate, Deck, MediaAsset, NoteField, NoteFieldValue, NoteType
-from app.models.enums import MediaType, NoteFieldType
+# Garantir que o pacote app esteja no path
+API_ROOT = Path(__file__).resolve().parents[1]
+if str(API_ROOT) not in sys.path:
+    sys.path.append(str(API_ROOT))
+
+from app.core.database import SessionLocal  # noqa: E402
+from app.models import CardTemplate, Deck, MediaAsset, NoteField, NoteFieldValue, NoteType  # noqa: E402
+from app.models.enums import MediaType, NoteFieldType  # noqa: E402
 from utils.common import (
     HIRAGANA_PAIRS,
     get_deck_by_slug,
@@ -133,8 +139,10 @@ def update_template(session, note_type: NoteType) -> None:
     img_snippet = '<img src="{{imagem}}" alt="" style="max-width:100%;height:auto;" />'
     if "{{imagem}}" not in (template.front_template or ""):
         template.front_template = f"{{{{kana}}}}\n{img_snippet}"
-    if "{{imagem}}" not in (template.back_template or ""):
-        template.back_template = f"{template.back_template}\n{img_snippet}"
+    # Remover imagem do verso para evitar duplicação
+    if template.back_template:
+        template.back_template = template.back_template.replace(img_snippet, "")
+        template.back_template = template.back_template.replace("{{imagem}}", "").strip()
 
 
 def main():

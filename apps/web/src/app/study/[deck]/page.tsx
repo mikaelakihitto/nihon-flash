@@ -281,13 +281,17 @@ export default function StudyPage() {
             <div className="text-center text-sm uppercase tracking-wide text-indigo-600">
               {phase === "preview" ? "Estudo" : "Quiz"}
             </div>
-            <div className="mt-4 flex items-center justify-center text-4xl font-semibold text-slate-900 text-center whitespace-pre-wrap">
-              {current.front}
-            </div>
+            <div
+              className="mt-4 flex items-center justify-center text-center text-4xl font-semibold text-slate-900"
+              dangerouslySetInnerHTML={{ __html: current.front }}
+            />
 
             {phase === "preview" ? (
               <>
-                <div className="mt-4 whitespace-pre-wrap text-center text-xl text-slate-700">{current.back}</div>
+                <div
+                  className="mt-4 text-center text-xl text-slate-700"
+                  dangerouslySetInnerHTML={{ __html: current.back }}
+                />
                 {audioUrl && (
                   <div className="mt-4 flex flex-col items-center gap-2">
                     <audio ref={audioRef} controls src={audioUrl} className="w-full" />
@@ -415,7 +419,10 @@ export default function StudyPage() {
                   <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm space-y-3">
                     <div>
                       <p className="font-semibold text-slate-900">Resposta completa:</p>
-                      <div className="mt-2 whitespace-pre-wrap">{current.back}</div>
+                      <div
+                        className="mt-2"
+                        dangerouslySetInnerHTML={{ __html: current.back }}
+                      />
                     </div>
                     {current.mnemonic && (
                       <p className="mt-2 text-slate-600">

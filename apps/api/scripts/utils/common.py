@@ -5,7 +5,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-API_ROOT = Path(__file__).resolve().parents[3]
+# Raiz do pacote api (…/apps/api)
+API_ROOT = Path(__file__).resolve().parents[2]
 if str(API_ROOT) not in sys.path:
     sys.path.append(str(API_ROOT))
 

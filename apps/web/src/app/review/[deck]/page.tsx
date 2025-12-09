@@ -170,9 +170,10 @@ export default function ReviewPage() {
         {!loading && !error && current && (
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="text-center text-sm uppercase tracking-wide text-indigo-600">Revisão</div>
-            <div className="mt-4 flex items-center justify-center text-5xl font-semibold text-slate-900">
-              {current.front}
-            </div>
+            <div
+              className="mt-4 flex items-center justify-center text-center text-5xl font-semibold text-slate-900"
+              dangerouslySetInnerHTML={{ __html: current.front }}
+            />
 
             <form
               className="mt-6 space-y-3"
@@ -236,7 +237,8 @@ export default function ReviewPage() {
 
             {showAnswer && (
               <div className="mt-4 text-center text-sm text-slate-600">
-                <span className="font-semibold">Verso:</span> {current.back}
+                <span className="font-semibold">Verso:</span>{" "}
+                <span dangerouslySetInnerHTML={{ __html: current.back }} />
                 {current.mnemonic && (
                   <div className="mt-2 text-slate-500">
                     <span className="font-semibold text-slate-700">Mnemônico:</span> {current.mnemonic}
