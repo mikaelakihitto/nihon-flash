@@ -172,7 +172,7 @@ export default function ReviewPage() {
         )}
 
         {!loading && !error && current && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white px-8 pb-8 pt-0 shadow-sm">
             <div className="text-center text-sm uppercase tracking-wide text-indigo-600">Revisão</div>
             <div
               className="mt-4 flex flex-col items-center justify-center gap-2 text-center text-[12rem] font-semibold text-slate-900 sm:text-[15rem] [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"

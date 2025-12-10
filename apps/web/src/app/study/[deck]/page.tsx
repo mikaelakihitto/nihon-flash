@@ -100,11 +100,19 @@ export default function StudyPage() {
   const current = cards[currentIdx];
   const total = cards.length;
   const finished = phase === "finished";
+  const frontHtml = current?.front || "";
+  const imageMatch = frontHtml.match(/<img[^>]*>/i);
+  const imageHtml = imageMatch?.[0] || "";
+  const kanaHtml = imageHtml ? frontHtml.replace(imageHtml, "").trim() : frontHtml;
   const audioUrl =
     current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.media_asset?.url ||
     current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.value_text ||
     "";
-  const cleanBack = current?.back && audioUrl ? current.back.replaceAll(audioUrl, "") : current?.back || "";
+  const baseBack = current?.back || "";
+  const cleanBack = baseBack
+    .replaceAll(audioUrl, "")
+    .replace(/<img[^>]*>/gi, "")
+    .trim();
 
   useEffect(() => {
     if (phase === "preview" && audioUrl && audioRef.current) {
@@ -278,16 +286,22 @@ export default function StudyPage() {
             </div>
           </div>
         ) : !loading && !error && current ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 pb-4 pt-0 shadow-sm">
             <div
-              className="mt-2 flex flex-col items-center justify-center gap-2 text-center text-[12rem] font-semibold text-slate-900 sm:text-[15rem] [&_img]:mt-1 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
-              dangerouslySetInnerHTML={{ __html: current.front }}
+              className="flex flex-col items-center justify-center gap-0 text-center text-[12rem] font-semibold leading-none text-slate-900 sm:text-[15rem] [&_img]:mt-0"
+              dangerouslySetInnerHTML={{ __html: kanaHtml }}
             />
+            {imageHtml && (
+              <div
+                className="mt-2 flex justify-center [&_img]:!h-auto [&_img]:!max-w-[120px] [&_img]:rounded-lg [&_img]:shadow-sm"
+                dangerouslySetInnerHTML={{ __html: imageHtml }}
+              />
+            )}
 
             {phase === "preview" ? (
               <>
                 <div
-                  className="mt-4 text-center text-xl text-slate-700 [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
+                  className="mt-4 text-center text-xl text-slate-700 [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[120px] [&_img]:rounded-lg [&_img]:shadow-sm"
                   dangerouslySetInnerHTML={{ __html: cleanBack }}
                 />
                 {audioUrl && (
@@ -418,7 +432,7 @@ export default function StudyPage() {
                     <div>
                       <p className="font-semibold text-slate-900">Resposta completa:</p>
                       <div
-                        className="mt-2 [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
+                        className="mt-2 [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[120px] [&_img]:rounded-lg [&_img]:shadow-sm"
                         dangerouslySetInnerHTML={{ __html: cleanBack }}
                       />
                     </div>
