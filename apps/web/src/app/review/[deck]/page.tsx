@@ -37,6 +37,7 @@ export default function ReviewPage() {
   const [answer, setAnswer] = useState("");
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +84,10 @@ export default function ReviewPage() {
 
   const finished = queue.length === 0;
   const normalize = (v: string) => v.trim().toLowerCase();
+  const audioUrl =
+    current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.media_asset?.url ||
+    current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.value_text ||
+    "";
 
   function submit() {
     if (!current) return;
@@ -229,13 +234,30 @@ export default function ReviewPage() {
             )}
 
             {isCorrect !== null && (
-              <div className="mt-6 flex justify-center gap-3">
+              <div className="mt-6 flex flex-col items-center gap-3">
                 <button
                   onClick={() => setShowAnswer((prev) => !prev)}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-slate-800 hover:bg-slate-100"
                 >
                   {showAnswer ? "Ocultar verso" : "Mostrar verso"}
                 </button>
+                {audioUrl && (
+                  <div className="flex items-center gap-2">
+                    <audio ref={audioRef} src={audioUrl} className="hidden" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (audioRef.current) {
+                          audioRef.current.currentTime = 0;
+                          audioRef.current.play().catch(() => {});
+                        }
+                      }}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-100"
+                    >
+                      Ouvir
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
