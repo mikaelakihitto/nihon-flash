@@ -116,9 +116,9 @@ export default function ReviewPage() {
     return card.back.split("\n")[0] || card.back;
   }
 
-  const cleanBack = current?.back
-    ? current.back.replace(/https?:\/\/[^\s"']+\.mp3/gi, "")
-    : "";
+  const cleanBack = current?.back ? current.back.replace(/https?:\/\/[^\s"']+\.mp3/gi, "") : "";
+  const frontNoImg = current?.front ? current.front.replace(/<img[^>]*>/gi, "") : "";
+  const imageHtml = current?.front ? (current.front.match(/<img[^>]*>/i)?.[0] || "") : "";
 
   if (!ready) return null;
   if (!deckParam) return null;
@@ -176,7 +176,7 @@ export default function ReviewPage() {
             <div className="text-center text-sm uppercase tracking-wide text-indigo-600">Revisão</div>
             <div
               className="mt-4 flex flex-col items-center justify-center gap-2 text-center text-[12rem] font-semibold text-slate-900 sm:text-[15rem] [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
-              dangerouslySetInnerHTML={{ __html: current.front }}
+              dangerouslySetInnerHTML={{ __html: frontNoImg }}
             />
 
             <form
@@ -246,6 +246,12 @@ export default function ReviewPage() {
                   className="[&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
                   dangerouslySetInnerHTML={{ __html: cleanBack }}
                 />
+                {imageHtml && (
+                  <div
+                    className="mt-2 flex justify-center [&_img]:!h-auto [&_img]:!max-w-[120px] [&_img]:rounded-lg [&_img]:shadow-sm"
+                    dangerouslySetInnerHTML={{ __html: imageHtml }}
+                  />
+                )}
                 {current.mnemonic && (
                   <div className="mt-2 text-slate-500">
                     <span className="font-semibold text-slate-700">Mnemônico:</span> {current.mnemonic}
