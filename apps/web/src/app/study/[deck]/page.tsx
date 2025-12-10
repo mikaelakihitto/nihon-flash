@@ -104,6 +104,7 @@ export default function StudyPage() {
     current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.media_asset?.url ||
     current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.value_text ||
     "";
+  const cleanBack = current?.back && audioUrl ? current.back.replaceAll(audioUrl, "") : current?.back || "";
 
   useEffect(() => {
     if (phase === "preview" && audioUrl && audioRef.current) {
@@ -278,23 +279,20 @@ export default function StudyPage() {
           </div>
         ) : !loading && !error && current ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-            <div className="text-center text-sm uppercase tracking-wide text-indigo-600">
-              {phase === "preview" ? "Estudo" : "Quiz"}
-            </div>
             <div
-              className="mt-4 flex items-center justify-center text-center text-4xl font-semibold text-slate-900"
+              className="mt-2 flex flex-col items-center justify-center gap-2 text-center text-[12rem] font-semibold text-slate-900 sm:text-[15rem] [&_img]:mt-1 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
               dangerouslySetInnerHTML={{ __html: current.front }}
             />
 
             {phase === "preview" ? (
               <>
                 <div
-                  className="mt-4 text-center text-xl text-slate-700"
-                  dangerouslySetInnerHTML={{ __html: current.back }}
+                  className="mt-4 text-center text-xl text-slate-700 [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
+                  dangerouslySetInnerHTML={{ __html: cleanBack }}
                 />
                 {audioUrl && (
                   <div className="mt-4 flex flex-col items-center gap-2">
-                    <audio ref={audioRef} controls src={audioUrl} className="w-full" />
+                    <audio ref={audioRef} className="hidden" src={audioUrl} />
                     <button
                       type="button"
                       onClick={() => {
@@ -303,9 +301,9 @@ export default function StudyPage() {
                           audioRef.current.play().catch(() => {});
                         }
                       }}
-                      className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-100"
                     >
-                      Ouvir novamente
+                      Ouvir
                     </button>
                   </div>
                 )}
@@ -380,7 +378,7 @@ export default function StudyPage() {
                 )}
                 {audioUrl && isCorrect !== null && (
                   <div className="mt-4 flex flex-col items-center gap-2">
-                    <audio ref={audioRef} controls src={audioUrl} className="w-full" />
+                    <audio ref={audioRef} src={audioUrl} className="hidden" />
                     <button
                       type="button"
                       onClick={() => {
@@ -389,9 +387,9 @@ export default function StudyPage() {
                           audioRef.current.play().catch(() => {});
                         }
                       }}
-                      className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-800 hover:bg-slate-100"
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-100"
                     >
-                      Ouvir novamente
+                      Ouvir
                     </button>
                   </div>
                 )}
@@ -420,8 +418,8 @@ export default function StudyPage() {
                     <div>
                       <p className="font-semibold text-slate-900">Resposta completa:</p>
                       <div
-                        className="mt-2"
-                        dangerouslySetInnerHTML={{ __html: current.back }}
+                        className="mt-2 [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
+                        dangerouslySetInnerHTML={{ __html: cleanBack }}
                       />
                     </div>
                     {current.mnemonic && (

@@ -116,6 +116,10 @@ export default function ReviewPage() {
     return card.back.split("\n")[0] || card.back;
   }
 
+  const cleanBack = current?.back
+    ? current.back.replace(/https?:\/\/[^\s"']+\.mp3/gi, "")
+    : "";
+
   if (!ready) return null;
   if (!deckParam) return null;
 
@@ -171,7 +175,7 @@ export default function ReviewPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
             <div className="text-center text-sm uppercase tracking-wide text-indigo-600">Revisão</div>
             <div
-              className="mt-4 flex items-center justify-center text-center text-5xl font-semibold text-slate-900"
+              className="mt-4 flex flex-col items-center justify-center gap-2 text-center text-[12rem] font-semibold text-slate-900 sm:text-[15rem] [&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
               dangerouslySetInnerHTML={{ __html: current.front }}
             />
 
@@ -238,7 +242,10 @@ export default function ReviewPage() {
             {showAnswer && (
               <div className="mt-4 text-center text-sm text-slate-600">
                 <span className="font-semibold">Verso:</span>{" "}
-                <span dangerouslySetInnerHTML={{ __html: current.back }} />
+                <span
+                  className="[&_img]:mt-2 [&_img]:!h-auto [&_img]:!max-w-[150px] [&_img]:rounded-lg [&_img]:shadow-sm"
+                  dangerouslySetInnerHTML={{ __html: cleanBack }}
+                />
                 {current.mnemonic && (
                   <div className="mt-2 text-slate-500">
                     <span className="font-semibold text-slate-700">Mnemônico:</span> {current.mnemonic}
