@@ -291,7 +291,7 @@ export default function StudyPage() {
               className="flex flex-col items-center justify-center gap-0 text-center text-[12rem] font-semibold leading-none text-slate-900 sm:text-[15rem] [&_img]:mt-0"
               dangerouslySetInnerHTML={{ __html: kanaHtml }}
             />
-            {imageHtml && (
+            {phase === "preview" && imageHtml && (
               <div
                 className="mt-2 flex justify-center [&_img]:!h-auto [&_img]:!max-w-[120px] [&_img]:rounded-lg [&_img]:shadow-sm"
                 dangerouslySetInnerHTML={{ __html: imageHtml }}
