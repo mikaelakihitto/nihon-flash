@@ -85,6 +85,21 @@ def list_decks(db: Session = Depends(get_db), current_user: User = Depends(get_c
     return [_build_deck_response(deck) for deck in decks]
 
 
+@router.get("/slug/{slug}", response_model=DeckRead)
+def get_deck_by_slug(slug: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    deck = (
+        db.query(Deck)
+        .options(
+            selectinload(Deck.note_types).selectinload(NoteType.templates),
+            selectinload(Deck.note_types).selectinload(NoteType.fields),
+        )
+        .filter(Deck.slug == slug)
+        .first()
+    )
+    deck = _ensure_can_read_deck(deck, current_user)
+    return _build_deck_response(deck)
+
+
 @router.post("", response_model=DeckRead, status_code=status.HTTP_201_CREATED)
 def create_deck(deck_in: DeckCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     slug = deck_in.slug or _slugify(deck_in.name)
@@ -184,6 +199,9 @@ def list_cards(deck_id: int, db: Session = Depends(get_db), current_user: User =
         .filter(Note.deck_id == deck_id)
         .all()
     )
+
+    if not cards:
+        return []
 
     progress_map = {
         p.card_id: p
@@ -380,6 +398,9 @@ def deck_cards_with_stats(deck_id: int, db: Session = Depends(get_db), current_u
         .order_by(Card.id)
         .all()
     )
+
+    if not cards:
+        return []
 
     progress_map = {
         p.card_id: p
