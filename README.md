@@ -33,6 +33,11 @@ nihon-flash/
 ### Core (`packages/core`)
 - `srs/algorithm_simple.py`: primeira função de cálculo de próxima revisão.
 
+## Documentação
+- API: `docs/API.md` (endpoints, payloads e headers).
+- Backend: `apps/api/README.md` (estrutura e modelos).
+- Frontend: `apps/web/README.md` (rotas/páginas e variáveis).
+
 ## Setup rápido
 
 ### 1) Backend

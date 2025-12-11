@@ -11,7 +11,15 @@ Estrutura inicial do backend FastAPI.
 - `app/srs`: componentes específicos da lógica de repetição espaçada.
 
 ## Execução local
-Consulte o README raiz para os comandos; requisitos mínimos estão em `requirements.txt`.
+```bash
+cd apps/api
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # configure JWT_SECRET e DATABASE_URL
+uvicorn app.main:app --reload
+```
+Swagger: `http://localhost:8000/docs` (OpenAPI gerada pelo FastAPI).
 
 ## Modelo de dados (estilo Anki)
 - `Deck`: agrupa estudo, agora com `slug`, instruções/descrição em Markdown, idiomas de origem/destino, `cover_image_url`, visibilidade (`is_public`) e `tags`.
@@ -30,3 +38,14 @@ As migrações atuais convertem cards legados para um note type genérico ("Lega
 3. Adicionar campos (`POST /note-types/{id}/fields`) e templates (`POST /note-types/{id}/templates`) com placeholders `{{field_name}}`.
 4. Criar notas (`POST /notes`) enviando `deck_id`, `note_type_id`, `field_values` (field_id + texto ou `media_asset_id`) e `mnemonic`. Os cards são criados automaticamente para cada template ativo.
 5. Consumir cards renderizados por deck em `GET /decks/{deck_id}/cards`, que já retornam `front`/`back` renderizados, dados da nota e status SRS.
+
+## Endpoints úteis (referência curta)
+- Saúde: `GET /health`.
+- Auth: `POST /auth/register`, `POST /auth/login` (header `Authorization: Bearer <token>` nas demais).
+- Decks: `GET /decks`, `GET /decks/{deck_id}`, `GET /decks/slug/{slug}`, `POST /decks`, `PUT /decks/{deck_id}`.
+- Notes: `POST /notes`, `GET /notes/{note_id}`.
+- Note types: `GET /note-types`, `GET /note-types/{id}`, `POST /note-types`, CRUD de fields/templates.
+- Estudo: `GET /decks/{deck_id}/study`, `POST /study/submit`.
+- Revisão: `GET /decks/{deck_id}/reviews`, `POST /cards/{card_id}/review`, `GET /decks/{deck_id}/review-stats`, `GET /me/review-log`.
+
+Detalhes adicionais em `docs/API.md`.
