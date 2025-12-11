@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthGuard } from "../../../lib/auth";
-import { apiFetch, fetchCardsWithStats, fetchDeckStats } from "../../../lib/api";
+import { fetchCardsWithStats, fetchDeckStats, fetchDecksWithMock } from "../../../lib/api";
 
 type Deck = {
   id: number;
@@ -55,7 +55,7 @@ export default function DeckDetailPage() {
     setError(null);
     (async () => {
       try {
-        const decks = await apiFetch<Deck[]>("/decks");
+        const decks = await fetchDecksWithMock();
         const found = decks.find((d) => d.slug === deckParam || d.slug === `${deckParam}-basico`);
         if (!found) {
           notFound();

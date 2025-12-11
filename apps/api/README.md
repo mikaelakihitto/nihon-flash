@@ -30,7 +30,7 @@ Swagger: `http://localhost:8000/docs` (OpenAPI gerada pelo FastAPI).
 - `Note`: instância de um note type dentro de um deck, com `tags`, timestamps e valores por campo (`note_field_values`).
 - `Card`: cartão gerado de um template para uma nota com estado SRS (`status`, `srs_interval`, `srs_ease`, `due_at`, `reps`, `lapses`, `mnemonic`).
 
-As migrações atuais convertem cards legados para um note type genérico ("Legacy Básico") e criam o seed "Hiragana - Básico" com note type, templates e cards gerados a partir da lista de kana.
+As migrações atuais convertem cards legados para um note type genérico ("Legacy Básico") e criam os seeds "Hiragana - Básico" e "Katakana - Básico" com note type, templates e cards gerados a partir das listas de kana.
 
 ## Fluxo para criar um novo deck/nota
 1. Criar deck (`POST /decks`) preenchendo `name`, `slug` (opcional, gerado), `instructions_md`, `source_lang`, `target_lang`, `tags`, `cover_image_url`.
@@ -49,3 +49,12 @@ As migrações atuais convertem cards legados para um note type genérico ("Lega
 - Revisão: `GET /decks/{deck_id}/reviews`, `POST /cards/{card_id}/review`, `GET /decks/{deck_id}/review-stats`, `GET /me/review-log`.
 
 Detalhes adicionais em `docs/API.md`.
+
+## Seeds (Hiragana/Katakana)
+- Hiragana é criado na migração `b2de42f5a4ce_anki_structure.py`.
+- Katakana é criado na migração `e3c2b5b8aa31_seed_katakana.py` (deck `katakana-basico`).
+- Scripts auxiliares:
+  - `python apps/api/scripts/generate_hiragana_audio.py` / `generate_katakana_audio.py` — gera MP3 com gTTS.
+  - `python apps/api/scripts/link_hiragana_audio.py` / `link_katakana_audio.py` — cria media_assets e vincula campo `audio`.
+  - `python apps/api/scripts/seed_hiragana_images.py` / `seed_katakana_images.py` — associa PNGs locais e injeta campo `imagem`.
+  - `python apps/api/scripts/seed_hiragana_public.py` / `seed_katakana_public.py` — marca deck como público.

@@ -45,3 +45,7 @@ Guia rápido dos principais endpoints expostos pelo backend FastAPI. Todas as ro
 
 ### Headers e Formato
 Todas as rotas aceitam/retornam JSON. Inclua `Content-Type: application/json` e `Authorization: Bearer <token>` quando necessário. As datas são retornadas em ISO 8601.
+
+## Seeds disponíveis
+- **Hiragana - Básico**: criado via migração `b2de42f5a4ce_anki_structure.py` + scripts de áudio/imagem (`generate_hiragana_audio.py`, `link_hiragana_audio.py`, `seed_hiragana_images.py`, `seed_hiragana_public.py`).
+- **Katakana - Básico**: criado via migração `e3c2b5b8aa31_seed_katakana.py` + scripts de áudio/imagem (`generate_katakana_audio.py`, `link_katakana_audio.py`, `seed_katakana_images.py`, `seed_katakana_public.py`).

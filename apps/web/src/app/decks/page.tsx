@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiFetch } from "../../lib/api";
+import { fetchDecksWithMock } from "../../lib/api";
 
 type Deck = {
   id: number;
@@ -16,14 +16,6 @@ type Deck = {
 };
 
 const placeholders: Deck[] = [
-  {
-    id: 10_001,
-    name: "Katakana - Básico",
-    slug: "katakana",
-    description: "46 caracteres para palavras estrangeiras e ênfase.",
-    cover_image_url: null,
-    available: false
-  },
   {
     id: 10_002,
     name: "Vocabulário N5",
@@ -49,8 +41,11 @@ export default function DecksPage() {
 
   useEffect(() => {
     setLoading(true);
-    apiFetch<Deck[]>("/decks")
-      .then((data) => setDecks([...data.map((d) => ({ ...d, available: true })), ...placeholders]))
+    fetchDecksWithMock()
+      .then((data) => {
+        const extras = placeholders.filter((p) => !data.some((deck) => deck.slug === p.slug));
+        setDecks([...data, ...extras]);
+      })
       .catch((err) => setError(err?.message || "Erro ao carregar decks"))
       .finally(() => setLoading(false));
   }, []);

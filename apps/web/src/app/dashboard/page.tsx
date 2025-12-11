@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearToken, useAuthGuard } from "../../lib/auth";
-import { apiFetch, fetchDeckReviewStats, fetchDeckStats } from "../../lib/api";
+import { fetchDeckReviewStats, fetchDeckStats, fetchDecksWithMock } from "../../lib/api";
 
 type Deck = {
   id: number;
@@ -38,15 +38,6 @@ type DeckFullStats = {
 
 const placeholders: Deck[] = [
   {
-    id: 10_001,
-    name: "Katakana - Básico",
-    slug: "katakana",
-    description: "46 caracteres para palavras estrangeiras e ênfase.",
-    cover_image_url: null,
-    note_types: [],
-    available: false
-  },
-  {
     id: 10_002,
     name: "Vocabulário N5",
     slug: "vocabulario-n5",
@@ -76,9 +67,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!ready) return;
-    apiFetch<Deck[]>("/decks")
+    fetchDecksWithMock()
       .then((data) => {
-        setDecks(data.map((d) => ({ ...d, available: true })));
+        const extras = placeholders.filter((p) => !data.some((deck) => deck.slug === p.slug));
+        setDecks([...data, ...extras]);
       })
       .catch((err) => setError(err?.message || "Erro ao carregar decks"));
   }, [ready]);

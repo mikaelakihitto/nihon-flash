@@ -29,6 +29,20 @@ HIRAGANA_PAIRS: list[tuple[str, str]] = [
     ("わ", "wa"), ("を", "wo"), ("ん", "n"),
 ]
 
+# Conjunto padrão de pares katakana/romaji usados nos seeds
+KATAKANA_PAIRS: list[tuple[str, str]] = [
+    ("ア", "a"), ("イ", "i"), ("ウ", "u"), ("エ", "e"), ("オ", "o"),
+    ("カ", "ka"), ("キ", "ki"), ("ク", "ku"), ("ケ", "ke"), ("コ", "ko"),
+    ("サ", "sa"), ("シ", "shi"), ("ス", "su"), ("セ", "se"), ("ソ", "so"),
+    ("タ", "ta"), ("チ", "chi"), ("ツ", "tsu"), ("テ", "te"), ("ト", "to"),
+    ("ナ", "na"), ("ニ", "ni"), ("ヌ", "nu"), ("ネ", "ne"), ("ノ", "no"),
+    ("ハ", "ha"), ("ヒ", "hi"), ("フ", "fu"), ("ヘ", "he"), ("ホ", "ho"),
+    ("マ", "ma"), ("ミ", "mi"), ("ム", "mu"), ("メ", "me"), ("モ", "mo"),
+    ("ヤ", "ya"), ("ユ", "yu"), ("ヨ", "yo"),
+    ("ラ", "ra"), ("リ", "ri"), ("ル", "ru"), ("レ", "re"), ("ロ", "ro"),
+    ("ワ", "wa"), ("ヲ", "wo"), ("ン", "n"),
+]
+
 
 def get_media_base_url() -> str:
     return os.getenv("MEDIA_BASE_URL", "http://localhost:3000").rstrip("/")
