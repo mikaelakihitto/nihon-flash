@@ -72,3 +72,7 @@ export async function fetchDeckStats(deckId: number) {
 export async function fetchCardsWithStats<T>(deckId: number) {
   return apiFetch<T[]>(`/decks/${deckId}/cards-with-stats`);
 }
+
+export async function fetchCardStatus<T>(deckId: number, cardId: number): Promise<T> {
+  return apiFetch<T>(`/decks/${deckId}/cards/${cardId}/status`);
+}

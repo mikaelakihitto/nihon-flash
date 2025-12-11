@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models import Card, Deck, Note, NoteFieldValue, NoteType, User, UserCardProgress
 from app.models.enums import CardStatus, LearningStage
-from app.schemas.card import RenderedCard
+from app.schemas.card import CardStatusResponse, RenderedCard
 from app.schemas.deck import DeckCreate, DeckRead, DeckUpdate
 from app.schemas.deck_stats import CardWithStats, DeckStats
 from app.schemas.note import NoteRead
@@ -222,6 +222,71 @@ def list_cards(deck_id: int, db: Session = Depends(get_db), current_user: User =
         )
 
     return rendered
+
+
+@router.get("/{deck_id}/cards/{card_id}/status", response_model=CardStatusResponse)
+def get_card_status(
+    deck_id: int,
+    card_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deck = _ensure_can_read_deck(db.get(Deck, deck_id), current_user)
+
+    card = (
+        db.query(Card)
+        .join(Note)
+        .options(
+            joinedload(Card.template),
+            joinedload(Card.note).joinedload(Note.field_values).joinedload(NoteFieldValue.field),
+            joinedload(Card.note).joinedload(Note.field_values).joinedload(NoteFieldValue.media_asset),
+            joinedload(Card.note).joinedload(Note.note_type),
+        )
+        .filter(Note.deck_id == deck_id, Card.id == card_id)
+        .first()
+    )
+    if not card:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found in this deck")
+
+    progress = (
+        db.query(UserCardProgress)
+        .filter(UserCardProgress.card_id == card.id, UserCardProgress.user_id == current_user.id)
+        .first()
+    )
+
+    context = build_note_context(card.note)
+    front = render_template(card.template.front_template, context)
+    back = render_template(card.template.back_template, context)
+    note_read = NoteRead.model_validate(card.note, from_attributes=True)
+
+    status_value = progress.status if progress else card.status
+    stage_value = progress.stage if progress else getattr(card, "stage", None)
+    srs_interval = progress.srs_interval if progress else card.srs_interval
+    srs_ease = progress.srs_ease if progress else card.srs_ease
+    due_at = progress.due_at if progress else card.due_at
+    last_reviewed_at = progress.last_reviewed_at if progress else card.last_reviewed_at
+    lapses = progress.lapses if progress else card.lapses
+    reps = progress.reps if progress else card.reps
+
+    return CardStatusResponse(
+        id=card.id,
+        deck_id=deck.id,
+        note_id=card.note_id,
+        card_template_id=card.card_template_id,
+        mnemonic=card.mnemonic,
+        status=status_value,
+        stage=stage_value,
+        srs_interval=srs_interval,
+        srs_ease=srs_ease,
+        due_at=due_at,
+        last_reviewed_at=last_reviewed_at,
+        lapses=lapses,
+        reps=reps,
+        front=front,
+        back=back,
+        note=note_read,
+        template_name=card.template.name if card.template else None,
+    )
 
 
 @router.get("/{deck_id}/stats", response_model=DeckStats)

@@ -79,6 +79,11 @@ export default function DeckDetailPage() {
   if (!ready) return null;
   if (!deckParam) return null;
 
+  function goToCard(cardId: number) {
+    if (!cardId) return;
+    router.push(`/decks/${deckParam}/cards/${cardId}`);
+  }
+
   const nextDueFormatted =
     stats?.next_due_at &&
     new Date(stats.next_due_at).toLocaleString("pt-BR", {
@@ -141,55 +146,86 @@ export default function DeckDetailPage() {
           </section>
         )}
 
-        {!loading && cards.length > 0 && (
+        {!loading && (
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-900">Cards do deck</h3>
               <span className="text-xs text-slate-500">{cards.length} itens</span>
             </div>
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full text-left text-sm text-slate-700">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="px-3 py-2 font-semibold">Frente</th>
-                    <th className="px-3 py-2 font-semibold">Estágio</th>
-                    <th className="px-3 py-2 font-semibold">Próxima revisão</th>
-                    <th className="px-3 py-2 font-semibold">Reps</th>
-                    <th className="px-3 py-2 font-semibold">Erros</th>
-                    <th className="px-3 py-2 font-semibold">Última</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cards.map((card) => (
-                    <tr key={card.id} className="border-b border-slate-100">
-                      <td className="px-3 py-2 text-slate-900">{card.front}</td>
-                      <td className="px-3 py-2 capitalize">{card.stage || "—"}</td>
-                      <td className="px-3 py-2">
-                        {card.due_at
-                          ? new Date(card.due_at).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-2">{card.reps ?? "—"}</td>
-                      <td className="px-3 py-2">{card.lapses ?? "—"}</td>
-                      <td className="px-3 py-2">
-                        {card.last_reviewed_at
-                          ? new Date(card.last_reviewed_at).toLocaleString("pt-BR", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              day: "2-digit",
-                              month: "2-digit"
-                            })
-                          : "—"}
-                      </td>
+            {cards.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-600">Nenhum card encontrado.</p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-sm text-slate-700">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="px-3 py-2 font-semibold">Frente</th>
+                      <th className="px-3 py-2 font-semibold">Estágio</th>
+                      <th className="px-3 py-2 font-semibold">Próxima revisão</th>
+                      <th className="px-3 py-2 font-semibold">Reps</th>
+                      <th className="px-3 py-2 font-semibold">Erros</th>
+                      <th className="px-3 py-2 font-semibold">Última</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {cards.map((card) => (
+                      <tr
+                        key={card.id}
+                        onClick={() => goToCard(card.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            goToCard(card.id);
+                          }
+                        }}
+                        tabIndex={0}
+                        className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
+                      >
+                        <td className="px-3 py-2 text-indigo-600 underline-offset-2 hover:underline">
+                          {cleanFront(card.front)}
+                        </td>
+                        <td className="px-3 py-2 capitalize">{card.stage || "—"}</td>
+                        <td className="px-3 py-2">
+                          {card.due_at
+                            ? new Date(card.due_at).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2">{card.reps ?? "—"}</td>
+                        <td className="px-3 py-2">{card.lapses ?? "—"}</td>
+                        <td className="px-3 py-2">
+                          {card.last_reviewed_at
+                            ? new Date(card.last_reviewed_at).toLocaleString("pt-BR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                day: "2-digit",
+                                month: "2-digit"
+                              })
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
       </main>
     </div>
+  );
+}
+
+function cleanFront(front: string) {
+  // Remove imagens e demais tags HTML para exibir somente o texto/kana
+  return (
+    front
+      // remove tags de imagem completas
+      .replace(/<img[\s\S]*?>/gi, "")
+      // remove caso a string esteja truncada e pare em um <img sem fechamento
+      .replace(/<img[\s\S]*$/i, "")
+      // remove quaisquer outras tags HTML
+      .replace(/<[^>]+>/g, "")
+      .trim()
   );
 }
 

@@ -32,6 +32,7 @@ class CardRead(CardBase):
 
 class RenderedCard(BaseModel):
     id: int
+    # deck_id omitido aqui para manter compat com usos existentes; ver CardStatusResponse para variante com deck.
     note_id: int
     card_template_id: int
     mnemonic: str | None = None
@@ -49,3 +50,7 @@ class RenderedCard(BaseModel):
     template_name: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CardStatusResponse(RenderedCard):
+    deck_id: int
