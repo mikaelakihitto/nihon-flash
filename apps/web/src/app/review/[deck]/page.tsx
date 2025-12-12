@@ -89,6 +89,13 @@ export default function ReviewPage() {
     current?.note?.field_values?.find((fv) => fv.field?.name === "audio")?.value_text ||
     "";
 
+  useEffect(() => {
+    if (isCorrect !== null && audioUrl && audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {});
+    }
+  }, [isCorrect, audioUrl]);
+
   function submit() {
     if (!current) return;
     if (isCorrect !== null) {
